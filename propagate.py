@@ -3,9 +3,5 @@ from torch.distributions import Poisson, Normal, Uniform, Distribution, Categori
 from distributions import TruncatedDiagonalMVN
 import numpy as np
 
-# Configure GPU if available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-torch.cuda.set_device(device)
-
-class BlockSMCSampler(object):
+class MCMCKernel(object):
     def __init__(self):
