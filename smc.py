@@ -2,7 +2,7 @@ import torch
 from torch.distributions import Poisson, Normal, Uniform
 from distributions import TruncatedDiagonalMVN
 from images import PSF
-import numpy as np
+import matplotlib.pyplot as plt
 
 class SMC(object):
     def __init__(self,
@@ -41,9 +41,11 @@ class SMC(object):
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm, self.catalogs_per_block, dim=0), dim = 0).softmax(1)
         self.weights_interblock = self.weights_log_unnorm.softmax(0)
         
-        self.ESS_threshold = 0.25 * catalogs_per_block
+        self.ESS_threshold = 0.5 * catalogs_per_block
         self.ESS = 1/(self.weights_intrablock**2).sum(1)
-
+        
+        self.has_run = False
+        
     def tempered_log_likelihood(self, fluxes, locs, temperatures):
         rate = (PSF(self.img_attr.img_width, self.img_attr.img_height,
                     self.num_blocks, locs[:,:,0], locs[:,:,1], self.img_attr.psf_stdev) * fluxes.view(-1, 1, 1, self.num_blocks)).sum(3) + self.img_attr.background_intensity
@@ -160,17 +162,49 @@ class SMC(object):
         self.weights_interblock = self.weights_log_unnorm.softmax(0)
         self.ESS = 1/(self.weights_intrablock**2).sum(1)
 
-    def run(self):
-        iter = 0
+    def run(self, print_progress = True):
+        self.iter = 0
         
-        while 1 - self.temperatures.unique() >= 1e-4 and iter <= self.max_smc_iters:
-            iter += 1
+        print("Starting the sampler...")
+        
+        while 1 - self.temperatures.unique() >= 1e-4 and self.iter <= self.max_smc_iters:
+            self.iter += 1
             
-            if iter % 5 == 0:
-                print(iter)
-                print(self.temperatures)
+            if print_progress == True and self.iter % 5 == 0:
+                print(f"iteration {self.iter}, temperature = {self.temperatures.unique().item()}, posterior mean count = {(self.weights_interblock * self.counts).sum()}")
             
             self.temper()
             self.resample()
             self.propagate()
             self.update_weights()
+        
+        print("Done!\n")
+        
+        self.has_run = True
+    
+    @property
+    def posterior_mean_count(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        return (self.counts * self.weights_interblock).sum()
+    
+    def summarize(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        
+        print(f"summary:\nnumber of SMC iterations: {self.iter}\n")
+        
+        print(f"posterior mean count: {self.posterior_mean_count}")
+        
+        argmax_index = self.weights_interblock.argmax()
+        print(f"argmax count: {self.counts[argmax_index].item()}")
+        print(f"argmax total flux: {self.fluxes[argmax_index].sum().item()}")
+        
+        reconstructed_image = (PSF(self.img_attr.img_width, self.img_attr.img_height,
+                                   self.num_blocks, self.locs[argmax_index,:,0],
+                                   self.locs[argmax_index,:,1], self.img_attr.psf_stdev) * self.fluxes[argmax_index,:].view(1, 1, self.num_blocks)).sum(3) + self.img_attr.background_intensity
+        fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
+        _ = original.imshow(self.img.cpu(), origin='lower')
+        _ = original.set_title('original')
+        _ = reconstruction.imshow(reconstructed_image.squeeze().cpu(), origin='lower')
+        _ = reconstruction.set_title('reconstruction')
