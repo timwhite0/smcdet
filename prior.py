@@ -1,16 +1,15 @@
 import torch
 from torch.distributions import Normal, Uniform, Categorical
-import numpy as np
 
 class CatalogPrior(object):
     def __init__(self,
-                 max_objects_generated: int,
+                 max_objects: int,
                  img_width: int,
                  img_height: int,
                  min_flux: float):
         
-        self.max_objects_generated = max_objects_generated
-        self.D = self.max_objects_generated + 1
+        self.max_objects = max_objects
+        self.D = self.max_objects + 1
         
         self.img_width = img_width
         self.img_height = img_height
@@ -25,28 +24,39 @@ class CatalogPrior(object):
                num_catalogs = 1,
                in_blocks = False,
                num_blocks = None,
-               particles_per_block = None):
+               catalogs_per_block = None):
         
-        if in_blocks is True and (num_blocks is None or particles_per_block is None):
-            raise ValueError("If in_blocks is True, need to specify num_blocks and particles_per_block.")
-        elif in_blocks is False and (num_blocks is not None or particles_per_block is not None):
-            raise ValueError("If in_blocks is False, do not specify num_blocks or particles_per_block.")
+        if in_blocks is True and (num_blocks is None or catalogs_per_block is None):
+            raise ValueError("If in_blocks is True, need to specify num_blocks and catalogs_per_block.")
+        elif in_blocks is False and (num_blocks is not None or catalogs_per_block is not None):
+            raise ValueError("If in_blocks is False, do not specify num_blocks or catalogs_per_block.")
         elif in_blocks is False:
             dim = self.D
-            count = self.count_prior.sample([num_catalogs])
+            counts = self.count_prior.sample([num_catalogs])
         elif in_blocks is True:
             dim = num_blocks
-            num_catalogs = num_blocks * particles_per_block
-            count = torch.ones(num_blocks * particles_per_block) * torch.arange(num_blocks).repeat_interleave(particles_per_block)
+            num_catalogs = num_blocks * catalogs_per_block
+            counts = torch.ones(num_blocks * catalogs_per_block) * torch.arange(num_blocks).repeat_interleave(catalogs_per_block)
         
-        count_indicator = torch.logical_and(torch.arange(dim).unsqueeze(0) <= count.unsqueeze(1),
+        count_indicator = torch.logical_and(torch.arange(dim).unsqueeze(0) <= counts.unsqueeze(1),
                                             torch.arange(dim).unsqueeze(0) > torch.zeros(num_catalogs).unsqueeze(1))
         
-        flux = self.flux_prior.sample([num_catalogs, dim]) * count_indicator
-        loc = self.loc_prior.sample([num_catalogs, dim]) * count_indicator.unsqueeze(2)
+        fluxes = self.flux_prior.sample([num_catalogs, dim]) * count_indicator
+        locs = self.loc_prior.sample([num_catalogs, dim]) * count_indicator.unsqueeze(2)
         
-        return [count, flux, loc]
+        return [counts, fluxes, locs]
     
     def log_prob(self,
-                 count, flux, loc):
-        ...
+                 counts, fluxes, locs):
+        
+        num_catalogs = fluxes.shape[0]
+        dim = fluxes.shape[1]
+        
+        count_indicator = torch.logical_and(torch.arange(dim).unsqueeze(0) <= counts.unsqueeze(1),
+                                            torch.arange(dim).unsqueeze(0) > torch.zeros(num_catalogs).unsqueeze(1))
+
+        log_prior = self.count_prior.log_prob(counts)
+        log_prior += (self.flux_prior.log_prob(fluxes) * count_indicator).sum(1)
+        log_prior += (self.loc_prior.log_prob(locs) * count_indicator.unsqueeze(2)).sum(2).sum(1)
+        
+        return log_prior

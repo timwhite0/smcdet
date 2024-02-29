@@ -1,2 +1,1 @@
-# blocksmc
-Sequential Monte Carlo samplers for transdimensional inference.
+# Probabilistic object detection with sequential Monte Carlo
