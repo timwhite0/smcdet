@@ -4,7 +4,7 @@ from distributions import TruncatedDiagonalMVN
 from images import PSF
 import matplotlib.pyplot as plt
 
-class SMC(object):
+class SMCsampler(object):
     def __init__(self,
                  img,
                  img_attr,
@@ -24,10 +24,10 @@ class SMC(object):
         self.max_smc_iters = max_smc_iters
         
         self.tempering_tol = 1e-6
-        self.tempering_max_iters = 100
+        self.tempering_max_iters = 50
         
-        self.kernel_num_iters = 100
-        self.kernel_fluxes_stdev = 2500
+        self.kernel_num_iters = 80
+        self.kernel_fluxes_stdev = 1000
         self.kernel_locs_stdev = 0.25
         
         self.counts, self.fluxes, self.locs = self.prior.sample(in_blocks = True,
@@ -47,9 +47,12 @@ class SMC(object):
         self.has_run = False
         
     def tempered_log_likelihood(self, fluxes, locs, temperatures):
-        rate = (PSF(self.img_attr.img_width, self.img_attr.img_height,
-                    self.num_blocks, locs[:,:,0], locs[:,:,1], self.img_attr.psf_stdev) * fluxes.view(-1, 1, 1, self.num_blocks)).sum(3) + self.img_attr.background_intensity
+        psf = PSF(self.img_attr.PSF_marginal_W, self.img_attr.PSF_marginal_H,
+                  self.num_blocks, locs[:,:,0], locs[:,:,1], self.img_attr.psf_stdev)
+        
+        rate = (psf * fluxes.view(-1, 1, 1, self.num_blocks)).sum(3) + self.img_attr.background_intensity
         rate = rate.permute((1,2,0))
+        
         loglik = Poisson(rate).log_prob(self.img.view(self.img_attr.img_width, self.img_attr.img_height, 1)).sum([0,1])
         tempered_loglik = temperatures.unsqueeze(1) * torch.stack(torch.split(loglik, self.catalogs_per_block, dim=0), dim=0)
 
@@ -124,7 +127,7 @@ class SMC(object):
         for iter in range(num_iters):
             fluxes_proposed = Normal(fluxes_prev, fluxes_proposal_stdev).sample() * count_indicator
             locs_proposed = TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev, torch.tensor(0), torch.tensor(self.img_attr.img_height)).sample() * count_indicator.unsqueeze(2)
-
+            
             log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperatures)
             log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_proposal_stdev, torch.tensor(0), torch.tensor(self.img_attr.img_height)).log_prob(locs_prev) * count_indicator.unsqueeze(2)).sum([1,2])
 
@@ -188,7 +191,7 @@ class SMC(object):
             raise ValueError("Sampler hasn't been run yet.")
         return (self.counts * self.weights_interblock).sum()
     
-    def summarize(self):
+    def summarize(self, display_images = True):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
         
@@ -200,11 +203,12 @@ class SMC(object):
         print(f"argmax count: {self.counts[argmax_index].item()}")
         print(f"argmax total flux: {self.fluxes[argmax_index].sum().item()}")
         
-        reconstructed_image = (PSF(self.img_attr.img_width, self.img_attr.img_height,
-                                   self.num_blocks, self.locs[argmax_index,:,0],
-                                   self.locs[argmax_index,:,1], self.img_attr.psf_stdev) * self.fluxes[argmax_index,:].view(1, 1, self.num_blocks)).sum(3) + self.img_attr.background_intensity
-        fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
-        _ = original.imshow(self.img.cpu(), origin='lower')
-        _ = original.set_title('original')
-        _ = reconstruction.imshow(reconstructed_image.squeeze().cpu(), origin='lower')
-        _ = reconstruction.set_title('reconstruction')
+        if display_images == True:
+            reconstructed_image = (PSF(self.img_attr.PSF_marginal_W, self.img_attr.PSF_marginal_H,
+                                    self.num_blocks, self.locs[argmax_index,:,0],
+                                    self.locs[argmax_index,:,1], self.img_attr.psf_stdev) * self.fluxes[argmax_index,:].view(1, 1, self.num_blocks)).sum(3) + self.img_attr.background_intensity
+            fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
+            _ = original.imshow(self.img.cpu(), origin='lower')
+            _ = original.set_title('original')
+            _ = reconstruction.imshow(reconstructed_image.squeeze().cpu(), origin='lower')
+            _ = reconstruction.set_title('reconstruction')

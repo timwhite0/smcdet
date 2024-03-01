@@ -2,12 +2,9 @@ import torch
 from torch.distributions import Poisson
 from prior import CatalogPrior
 
-def PSF(img_width, img_height, dim, loc_W, loc_H, psf_stdev):
-    psf_marginal_W = 1 + torch.arange(img_width, dtype=torch.float32)
-    psf_marginal_H = 1 + torch.arange(img_height, dtype=torch.float32)
-    
-    psf = ((-(psf_marginal_W.view(1, 1, img_width, 1) - loc_W.view(-1, 1, 1, dim))**2 -
-            (psf_marginal_H.view(1, img_height, 1, 1) - loc_H.view(-1, 1, 1, dim))**2)/(2*psf_stdev**2)).exp()
+def PSF(marginal_W, marginal_H, dim, loc_W, loc_H, psf_stdev):    
+    psf = ((-(marginal_W - loc_W.view(-1, 1, 1, dim))**2 -
+            (marginal_H - loc_H.view(-1, 1, 1, dim))**2)/(2*psf_stdev**2)).exp()
     psf = psf/psf.sum([1,2]).view(-1, 1, 1, dim)
     
     return psf
@@ -22,6 +19,8 @@ class ImageAttributes(object):
         
         self.img_width = img_width
         self.img_height = img_height
+        self.PSF_marginal_W = (1 + torch.arange(self.img_width, dtype=torch.float32)).view(1, 1, self.img_width, 1)
+        self.PSF_marginal_H = (1 + torch.arange(self.img_height, dtype=torch.float32)).view(1, self.img_height, 1, 1)
         
         self.max_objects = max_objects
         self.max_count = self.max_objects + 1
@@ -41,7 +40,7 @@ class ImageAttributes(object):
         catalogs = prior.sample(num)
         counts, fluxes, locs = catalogs
         
-        source_intensities = (fluxes.view(num, 1, 1, self.max_count) * PSF(self.img_width, self.img_height,
+        source_intensities = (fluxes.view(num, 1, 1, self.max_count) * PSF(self.PSF_marginal_W, self.PSF_marginal_H,
                                                                            self.max_count, locs[:,:,0],
                                                                            locs[:,:,1], self.psf_stdev)).sum(3)
         total_intensities = source_intensities + self.background_intensity
