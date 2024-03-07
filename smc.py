@@ -128,11 +128,11 @@ class SMCsampler(object):
             fluxes_proposed = Normal(fluxes_prev, fluxes_proposal_stdev).sample() * count_indicator
             locs_proposed = TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev, torch.tensor(0), torch.tensor(self.img_attr.img_height)).sample() * count_indicator.unsqueeze(2)
             
-            log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperatures)
+            log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperatures_prev)
             log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_proposal_stdev, torch.tensor(0), torch.tensor(self.img_attr.img_height)).log_prob(locs_prev) * count_indicator.unsqueeze(2)).sum([1,2])
 
             if iter == 0:
-                log_denominator = self.log_target(self.counts, fluxes_prev, locs_prev, self.temperatures)
+                log_denominator = self.log_target(self.counts, fluxes_prev, locs_prev, self.temperatures_prev)
                 log_denominator += (TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev, torch.tensor(0), torch.tensor(self.img_attr.img_height)).log_prob(locs_proposed) * count_indicator.unsqueeze(2)).sum([1,2])
         
             alpha = (log_numerator - log_denominator).exp().clamp(max = 1)
@@ -170,15 +170,18 @@ class SMCsampler(object):
         
         print("Starting the sampler...")
         
+        self.temper()
+        self.update_weights()
+        
         while 1 - self.temperatures.unique() >= 1e-4 and self.iter <= self.max_smc_iters:
             self.iter += 1
             
             if print_progress == True and self.iter % 5 == 0:
                 print(f"iteration {self.iter}, temperature = {self.temperatures.unique().item()}, posterior mean count = {(self.weights_interblock * self.counts).sum()}")
             
-            self.temper()
             self.resample()
             self.propagate()
+            self.temper()
             self.update_weights()
         
         print("Done!\n")
