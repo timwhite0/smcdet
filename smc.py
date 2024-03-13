@@ -3,6 +3,7 @@ from torch.distributions import Poisson, Normal, Uniform
 from distributions import TruncatedDiagonalMVN
 from images import PSF
 import matplotlib.pyplot as plt
+import time
 
 class SMCsampler(object):
     def __init__(self,
@@ -40,6 +41,7 @@ class SMCsampler(object):
         self.weights_log_unnorm = torch.zeros(self.num_catalogs)
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm, self.catalogs_per_block, dim=0), dim = 0).softmax(1)
         self.weights_interblock = self.weights_log_unnorm.softmax(0)
+        self.log_normalizing_constant = 0 #(self.weights_log_unnorm.exp().mean()).log()
         
         self.ESS_threshold = 0.5 * catalogs_per_block
         self.ESS = 1/(self.weights_intrablock**2).sum(1)
@@ -161,8 +163,16 @@ class SMCsampler(object):
                                                                self.temperatures - self.temperatures_prev).flatten(0)
         
         self.weights_log_unnorm = self.weights_interblock.log() + weights_log_incremental
+        self.weights_log_unnorm = torch.nan_to_num(self.weights_log_unnorm, -torch.inf)
+        
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm, self.catalogs_per_block, dim=0), dim = 0).softmax(1)
         self.weights_interblock = self.weights_log_unnorm.softmax(0)
+        
+        m = self.weights_log_unnorm.max()
+        w = (self.weights_log_unnorm - m).exp()
+        s = w.sum()
+        self.log_normalizing_constant = self.log_normalizing_constant + m + (s/self.num_catalogs).log()
+        
         self.ESS = 1/(self.weights_intrablock**2).sum(1)
 
     def run(self, print_progress = True):
@@ -194,13 +204,22 @@ class SMCsampler(object):
             raise ValueError("Sampler hasn't been run yet.")
         return (self.counts * self.weights_interblock).sum()
     
+    @property
+    def posterior_mean_total_flux(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        return (self.fluxes.sum(1) * self.weights_interblock).sum()
+    
     def summarize(self, display_images = True):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
         
-        print(f"summary:\nnumber of SMC iterations: {self.iter}\n")
+        print(f"summary\nnumber of SMC iterations: {self.iter}\n")
+        
+        print(f"log normalizing constant: {self.log_normalizing_constant}\n")
         
         print(f"posterior mean count: {self.posterior_mean_count}")
+        print(f"posterior mean total flux: {self.posterior_mean_total_flux}")
         
         argmax_index = self.weights_interblock.argmax()
         print(f"argmax count: {self.counts[argmax_index].item()}")
