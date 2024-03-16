@@ -238,7 +238,7 @@ class SMCsampler(object):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
         
-        print(f"summary\nnumber of SMC iterations: {self.iter}\n")
+        print(f"summary\nnumber of SMC iterations: {self.iter}")
         
         print(f"log normalizing constant: {self.log_normalizing_constant}")
         
