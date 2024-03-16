@@ -1,7 +1,7 @@
 import torch
 from torch.distributions import Poisson, Normal, Uniform
-from distributions import TruncatedDiagonalMVN
-from images import PSF
+from smc.distributions import TruncatedDiagonalMVN
+from smc.images import PSF
 import matplotlib.pyplot as plt
 import time
 
@@ -25,7 +25,7 @@ class SMCsampler(object):
         self.max_smc_iters = max_smc_iters
         
         self.tempering_tol = 1e-6
-        self.tempering_max_iters = 50
+        self.tempering_max_iters = 100
         
         self.kernel_num_iters = 80
         self.kernel_fluxes_stdev = 1000
@@ -210,27 +210,47 @@ class SMCsampler(object):
             raise ValueError("Sampler hasn't been run yet.")
         return (self.fluxes.sum(1) * self.weights_interblock).sum()
     
+    @property
+    def argmax_count(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        argmax_index = self.weights_interblock.argmax()
+        return self.counts[argmax_index].item()
+    
+    @property
+    def argmax_total_flux(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        argmax_index = self.weights_interblock.argmax()
+        return self.fluxes[argmax_index].sum().item()
+    
+    @property
+    def reconstructed_image(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        argmax_index = self.weights_interblock.argmax()
+        return ((PSF(self.img_attr.PSF_marginal_W, self.img_attr.PSF_marginal_H,
+                     self.num_blocks, self.locs[argmax_index,:,0],
+                     self.locs[argmax_index,:,1], self.img_attr.psf_stdev
+                     ) * self.fluxes[argmax_index,:].view(1, 1, self.num_blocks)).sum(3) + self.img_attr.background_intensity).squeeze()
+    
     def summarize(self, display_images = True):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
         
         print(f"summary\nnumber of SMC iterations: {self.iter}\n")
         
-        print(f"log normalizing constant: {self.log_normalizing_constant}\n")
+        print(f"log normalizing constant: {self.log_normalizing_constant}")
         
         print(f"posterior mean count: {self.posterior_mean_count}")
         print(f"posterior mean total flux: {self.posterior_mean_total_flux}")
         
-        argmax_index = self.weights_interblock.argmax()
-        print(f"argmax count: {self.counts[argmax_index].item()}")
-        print(f"argmax total flux: {self.fluxes[argmax_index].sum().item()}")
+        print(f"argmax count: {self.argmax_count}")
+        print(f"argmax total flux: {self.argmax_total_flux}\n\n\n")
         
         if display_images == True:
-            reconstructed_image = (PSF(self.img_attr.PSF_marginal_W, self.img_attr.PSF_marginal_H,
-                                    self.num_blocks, self.locs[argmax_index,:,0],
-                                    self.locs[argmax_index,:,1], self.img_attr.psf_stdev) * self.fluxes[argmax_index,:].view(1, 1, self.num_blocks)).sum(3) + self.img_attr.background_intensity
             fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
             _ = original.imshow(self.img.cpu(), origin='lower')
             _ = original.set_title('original')
-            _ = reconstruction.imshow(reconstructed_image.squeeze().cpu(), origin='lower')
+            _ = reconstruction.imshow(self.reconstructed_image.cpu(), origin='lower')
             _ = reconstruction.set_title('reconstruction')

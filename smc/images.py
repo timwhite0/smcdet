@@ -1,6 +1,6 @@
 import torch
 from torch.distributions import Poisson
-from prior import CatalogPrior
+from smc.prior import CatalogPrior
 
 def PSF(marginal_W, marginal_H, dim, loc_W, loc_H, psf_stdev):    
     psf = ((-(marginal_W - loc_W.view(-1, 1, 1, dim))**2 -
