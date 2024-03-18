@@ -178,7 +178,7 @@ torch.save(images, "results/images.pt")
 
 # SEP results
 torch.save(sep_estimated_count, "results/sep_estimated_count.pt")
-torch.save(sep_estimated_total_flux, "results/sep_estimated_total_flux")
+torch.save(sep_estimated_total_flux, "results/sep_estimated_total_flux.pt")
 torch.save(sep_reconstruction, "results/sep_reconstruction.pt")
 
 # SMC results
