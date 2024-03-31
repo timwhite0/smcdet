@@ -6,6 +6,7 @@ class CatalogPrior(object):
                  max_objects: int,
                  img_width: int,
                  img_height: int,
+                 pad: int,
                  min_flux: float):
         
         self.max_objects = max_objects
@@ -13,12 +14,13 @@ class CatalogPrior(object):
         
         self.img_width = img_width
         self.img_height = img_height
+        self.pad = pad
         
         self.min_flux = torch.tensor(min_flux)
         
         self.count_prior = Categorical((1/self.D) * torch.ones(self.D))
         self.flux_prior = Normal(10 * self.min_flux, 2 * self.min_flux)
-        self.loc_prior = Uniform(torch.zeros(2), torch.tensor((self.img_width, self.img_height)))
+        self.loc_prior = Uniform(torch.zeros(2) - self.pad*torch.ones(2), torch.tensor((self.img_width, self.img_height)) + self.pad*torch.ones(2))
     
     def sample(self,
                num_catalogs = 1,

@@ -35,6 +35,7 @@ class ImageAttributes(object):
         prior = CatalogPrior(max_objects = self.max_objects,
                              img_width = self.img_width,
                              img_height = self.img_height,
+                             pad = 0,
                              min_flux = self.min_flux)
         
         catalogs = prior.sample(num)

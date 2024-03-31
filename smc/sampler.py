@@ -128,14 +128,14 @@ class SMCsampler(object):
         
         for iter in range(num_iters):
             fluxes_proposed = Normal(fluxes_prev, fluxes_proposal_stdev).sample() * count_indicator
-            locs_proposed = TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev, torch.tensor(0), torch.tensor(self.img_attr.img_height)).sample() * count_indicator.unsqueeze(2)
+            locs_proposed = TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev, torch.tensor(0) - torch.tensor(self.prior.pad), torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).sample() * count_indicator.unsqueeze(2)
             
             log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperatures_prev)
-            log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_proposal_stdev, torch.tensor(0), torch.tensor(self.img_attr.img_height)).log_prob(locs_prev) * count_indicator.unsqueeze(2)).sum([1,2])
+            log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_proposal_stdev, torch.tensor(0) - torch.tensor(self.prior.pad), torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_prev) * count_indicator.unsqueeze(2)).sum([1,2])
 
             if iter == 0:
                 log_denominator = self.log_target(self.counts, fluxes_prev, locs_prev, self.temperatures_prev)
-                log_denominator += (TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev, torch.tensor(0), torch.tensor(self.img_attr.img_height)).log_prob(locs_proposed) * count_indicator.unsqueeze(2)).sum([1,2])
+                log_denominator += (TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev, torch.tensor(0) - torch.tensor(self.prior.pad), torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_proposed) * count_indicator.unsqueeze(2)).sum([1,2])
         
             alpha = (log_numerator - log_denominator).exp().clamp(max = 1)
             prob = Uniform(torch.zeros(self.num_catalogs), torch.ones(self.num_catalogs)).sample()
