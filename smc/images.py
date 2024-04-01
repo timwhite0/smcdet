@@ -41,9 +41,9 @@ class ImageAttributes(object):
         catalogs = prior.sample(num)
         counts, fluxes, locs = catalogs
         
-        source_intensities = (fluxes.view(num, 1, 1, self.max_count) * PSF(self.PSF_marginal_W, self.PSF_marginal_H,
-                                                                           self.max_count, locs[:,:,0],
-                                                                           locs[:,:,1], self.psf_stdev)).sum(3)
+        source_intensities = (fluxes.view(num, 1, 1, self.max_objects) * PSF(self.PSF_marginal_W, self.PSF_marginal_H,
+                                                                             self.max_objects, locs[:,:,0],
+                                                                             locs[:,:,1], self.psf_stdev)).sum(3)
         total_intensities = source_intensities + self.background_intensity
         
         images = Poisson(total_intensities).sample()

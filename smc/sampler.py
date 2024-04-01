@@ -27,7 +27,7 @@ class SMCsampler(object):
         self.tempering_tol = 1e-6
         self.tempering_max_iters = 100
         
-        self.kernel_num_iters = 80
+        self.kernel_num_iters = 100
         self.kernel_fluxes_stdev = 1000
         self.kernel_locs_stdev = 0.25
         
@@ -50,9 +50,9 @@ class SMCsampler(object):
         
     def tempered_log_likelihood(self, fluxes, locs, temperatures):
         psf = PSF(self.img_attr.PSF_marginal_W, self.img_attr.PSF_marginal_H,
-                  self.num_blocks, locs[:,:,0], locs[:,:,1], self.img_attr.psf_stdev)
+                  locs.shape[1], locs[:,:,0], locs[:,:,1], self.img_attr.psf_stdev)
         
-        rate = (psf * fluxes.view(-1, 1, 1, self.num_blocks)).sum(3) + self.img_attr.background_intensity
+        rate = (psf * fluxes.view(-1, 1, 1, fluxes.shape[1])).sum(3) + self.img_attr.background_intensity
         rate = rate.permute((1,2,0))
         
         loglik = Poisson(rate).log_prob(self.img.view(self.img_attr.img_width, self.img_attr.img_height, 1)).sum([0,1])
@@ -120,8 +120,7 @@ class SMCsampler(object):
         fluxes_proposal_stdev = fluxes_stdev * torch.ones(1)
         locs_proposal_stdev = locs_stdev * torch.ones(1)
         
-        count_indicator = torch.logical_and(torch.arange(self.num_blocks).unsqueeze(0) <= self.counts.unsqueeze(1),
-                                            torch.arange(self.num_blocks).unsqueeze(0) > torch.zeros(self.num_catalogs).unsqueeze(1))
+        count_indicator = torch.arange(1, self.num_blocks).unsqueeze(0) <= self.counts.unsqueeze(1)
         
         fluxes_prev = self.fluxes
         locs_prev = self.locs
@@ -230,9 +229,9 @@ class SMCsampler(object):
             raise ValueError("Sampler hasn't been run yet.")
         argmax_index = self.weights_interblock.argmax()
         return ((PSF(self.img_attr.PSF_marginal_W, self.img_attr.PSF_marginal_H,
-                     self.num_blocks, self.locs[argmax_index,:,0],
+                     self.locs.shape[1], self.locs[argmax_index,:,0],
                      self.locs[argmax_index,:,1], self.img_attr.psf_stdev
-                     ) * self.fluxes[argmax_index,:].view(1, 1, self.num_blocks)).sum(3) + self.img_attr.background_intensity).squeeze()
+                     ) * self.fluxes[argmax_index,:].view(1, 1, self.fluxes.shape[1])).sum(3) + self.img_attr.background_intensity).squeeze()
     
     def summarize(self, display_images = True):
         if self.has_run == False:
