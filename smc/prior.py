@@ -40,22 +40,19 @@ class CatalogPrior(object):
             num_catalogs = num_blocks * catalogs_per_block
             counts = torch.ones(num_blocks * catalogs_per_block) * torch.arange(num_blocks).repeat_interleave(catalogs_per_block)
         
-        count_indicator = torch.logical_and(torch.arange(dim).unsqueeze(0) <= counts.unsqueeze(1),
-                                            torch.arange(dim).unsqueeze(0) > torch.zeros(num_catalogs).unsqueeze(1))
+        count_indicator = torch.arange(1, dim).unsqueeze(0) <= counts.unsqueeze(1)
         
-        fluxes = self.flux_prior.sample([num_catalogs, dim]) * count_indicator
-        locs = self.loc_prior.sample([num_catalogs, dim]) * count_indicator.unsqueeze(2)
+        fluxes = self.flux_prior.sample([num_catalogs, self.max_objects]) * count_indicator
+        locs = self.loc_prior.sample([num_catalogs, self.max_objects]) * count_indicator.unsqueeze(2)
         
         return [counts, fluxes, locs]
     
     def log_prob(self,
                  counts, fluxes, locs):
-        
-        num_catalogs = fluxes.shape[0]
+
         dim = fluxes.shape[1]
         
-        count_indicator = torch.logical_and(torch.arange(dim).unsqueeze(0) <= counts.unsqueeze(1),
-                                            torch.arange(dim).unsqueeze(0) > torch.zeros(num_catalogs).unsqueeze(1))
+        count_indicator = 1 + torch.arange(dim).unsqueeze(0) <= counts.unsqueeze(1)
 
         log_prior = self.count_prior.log_prob(counts)
         log_prior += (self.flux_prior.log_prob(fluxes) * count_indicator).sum(1)
