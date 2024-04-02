@@ -1,20 +1,28 @@
 import torch
 from torch.distributions import Poisson, Normal, Uniform
 from smc.distributions import TruncatedDiagonalMVN
-from smc.images import PSF
 import matplotlib.pyplot as plt
-import time
 
 class SMCsampler(object):
     def __init__(self,
                  img,
                  img_attr,
+                 tile_side_length,
                  prior,
                  num_blocks,
                  catalogs_per_block,
                  max_smc_iters):
         self.img = img
         self.img_attr = img_attr
+        
+        self.tile_side_length = tile_side_length
+        self.num_tiles_h = self.img_attr.img_height//tile_side_length
+        self.num_tiles_w = self.img_attr.img_width//tile_side_length
+        self.tiles = img.unfold(0,
+                                self.tile_side_length,
+                                self.tile_side_length).unfold(1,
+                                                              self.tile_side_length,
+                                                              self.tile_side_length)
         
         self.prior = prior
         
@@ -39,7 +47,8 @@ class SMCsampler(object):
         self.temperatures = torch.zeros(self.num_blocks)
         
         self.weights_log_unnorm = torch.zeros(self.num_catalogs)
-        self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm, self.catalogs_per_block, dim=0), dim = 0).softmax(1)
+        self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
+                                                          self.catalogs_per_block, dim=0), dim=0).softmax(1)
         self.weights_interblock = self.weights_log_unnorm.softmax(0)
         self.log_normalizing_constant = 0 #(self.weights_log_unnorm.exp().mean()).log()
         
@@ -49,14 +58,15 @@ class SMCsampler(object):
         self.has_run = False
         
     def tempered_log_likelihood(self, fluxes, locs, temperatures):
-        psf = PSF(self.img_attr.PSF_marginal_W, self.img_attr.PSF_marginal_H,
-                  locs.shape[1], locs[:,:,0], locs[:,:,1], self.img_attr.psf_stdev)
+        psf = self.img_attr.PSF(locs.shape[1], locs[:,:,0], locs[:,:,1])
         
         rate = (psf * fluxes.view(-1, 1, 1, fluxes.shape[1])).sum(3) + self.img_attr.background_intensity
         rate = rate.permute((1,2,0))
         
-        loglik = Poisson(rate).log_prob(self.img.view(self.img_attr.img_width, self.img_attr.img_height, 1)).sum([0,1])
-        tempered_loglik = temperatures.unsqueeze(1) * torch.stack(torch.split(loglik, self.catalogs_per_block, dim=0), dim=0)
+        loglik = Poisson(rate).log_prob(self.img.view(self.img_attr.img_height,
+                                                      self.img_attr.img_width, 1)).sum([0,1])
+        tempered_loglik = temperatures.unsqueeze(1) * torch.stack(torch.split(loglik,
+                                                                              self.catalogs_per_block, dim=0), dim=0)
 
         return tempered_loglik
 
@@ -127,14 +137,20 @@ class SMCsampler(object):
         
         for iter in range(num_iters):
             fluxes_proposed = Normal(fluxes_prev, fluxes_proposal_stdev).sample() * count_indicator
-            locs_proposed = TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev, torch.tensor(0) - torch.tensor(self.prior.pad), torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).sample() * count_indicator.unsqueeze(2)
+            locs_proposed = TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev,
+                                                 torch.tensor(0) - torch.tensor(self.prior.pad),
+                                                 torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).sample() * count_indicator.unsqueeze(2)
             
             log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperatures_prev)
-            log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_proposal_stdev, torch.tensor(0) - torch.tensor(self.prior.pad), torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_prev) * count_indicator.unsqueeze(2)).sum([1,2])
+            log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_proposal_stdev,
+                                                   torch.tensor(0) - torch.tensor(self.prior.pad),
+                                                   torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_prev) * count_indicator.unsqueeze(2)).sum([1,2])
 
             if iter == 0:
                 log_denominator = self.log_target(self.counts, fluxes_prev, locs_prev, self.temperatures_prev)
-                log_denominator += (TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev, torch.tensor(0) - torch.tensor(self.prior.pad), torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_proposed) * count_indicator.unsqueeze(2)).sum([1,2])
+                log_denominator += (TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev,
+                                                         torch.tensor(0) - torch.tensor(self.prior.pad),
+                                                         torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_proposed) * count_indicator.unsqueeze(2)).sum([1,2])
         
             alpha = (log_numerator - log_denominator).exp().clamp(max = 1)
             prob = Uniform(torch.zeros(self.num_catalogs), torch.ones(self.num_catalogs)).sample()
@@ -228,10 +244,10 @@ class SMCsampler(object):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
         argmax_index = self.weights_interblock.argmax()
-        return ((PSF(self.img_attr.PSF_marginal_W, self.img_attr.PSF_marginal_H,
-                     self.locs.shape[1], self.locs[argmax_index,:,0],
-                     self.locs[argmax_index,:,1], self.img_attr.psf_stdev
-                     ) * self.fluxes[argmax_index,:].view(1, 1, self.fluxes.shape[1])).sum(3) + self.img_attr.background_intensity).squeeze()
+        return ((self.img_attr.PSF(self.locs.shape[1],
+                                   self.locs[argmax_index,:,0],
+                                   self.locs[argmax_index,:,1]
+                ) * self.fluxes[argmax_index,:].view(1, 1, -1)).sum(3) + self.img_attr.background_intensity).squeeze()
     
     def summarize(self, display_images = True):
         if self.has_run == False:
