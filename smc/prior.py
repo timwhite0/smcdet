@@ -24,6 +24,8 @@ class CatalogPrior(object):
                                  torch.tensor((self.img_height, self.img_width)) + self.pad*torch.ones(2))
     
     def sample(self,
+               num_tiles_h = 1,
+               num_tiles_w = 1,
                num_catalogs = 1,
                in_blocks = False,
                num_blocks = None,
@@ -35,28 +37,34 @@ class CatalogPrior(object):
             raise ValueError("If in_blocks is False, do not specify num_blocks or catalogs_per_block.")
         elif in_blocks is False:
             dim = self.D
+            
             counts = self.count_prior.sample([num_catalogs])
+            count_indicator = torch.arange(1, dim).unsqueeze(0) <= counts.unsqueeze(1)
+            
+            fluxes = self.flux_prior.sample([num_catalogs, self.max_objects]) * count_indicator
+            locs = self.loc_prior.sample([num_catalogs, self.max_objects]) * count_indicator.unsqueeze(2)
         elif in_blocks is True:
             dim = num_blocks
             num_catalogs = num_blocks * catalogs_per_block
-            counts = torch.ones(num_blocks * catalogs_per_block) * torch.arange(num_blocks).repeat_interleave(catalogs_per_block)
-        
-        count_indicator = torch.arange(1, dim).unsqueeze(0) <= counts.unsqueeze(1)
-        
-        fluxes = self.flux_prior.sample([num_catalogs, self.max_objects]) * count_indicator
-        locs = self.loc_prior.sample([num_catalogs, self.max_objects]) * count_indicator.unsqueeze(2)
+            
+            counts = torch.ones(num_tiles_h, num_tiles_w, num_blocks * catalogs_per_block) * torch.arange(num_blocks).repeat_interleave(catalogs_per_block)
+            count_indicator = torch.arange(1, dim).unsqueeze(0) <= counts.unsqueeze(3)
+                   
+            fluxes = self.flux_prior.sample([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator
+            locs = self.loc_prior.sample([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator.unsqueeze(4)
         
         return [counts, fluxes, locs]
     
+    # log_prob is defined for the in_blocks case within a SMCsampler
     def log_prob(self,
                  counts, fluxes, locs):
 
-        dim = fluxes.shape[1]
+        dim = fluxes.shape[3]
         
-        count_indicator = 1 + torch.arange(dim).unsqueeze(0) <= counts.unsqueeze(1)
+        count_indicator = 1 + torch.arange(dim).unsqueeze(0) <= counts.unsqueeze(3)
 
         log_prior = self.count_prior.log_prob(counts)
-        log_prior += (self.flux_prior.log_prob(fluxes) * count_indicator).sum(1)
-        log_prior += (self.loc_prior.log_prob(locs) * count_indicator.unsqueeze(2)).sum(2).sum(1)
+        log_prior += (self.flux_prior.log_prob(fluxes) * count_indicator).sum(3)
+        log_prior += (self.loc_prior.log_prob(locs) * count_indicator.unsqueeze(4)).sum([3,4])
         
         return log_prior

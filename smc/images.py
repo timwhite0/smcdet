@@ -21,9 +21,16 @@ class ImageAttributes(object):
         self.background_intensity = background_intensity
     
     def PSF(self, num_layers, loc_H, loc_W):
-        psf = ((-(self.PSF_marginal_H - loc_H.view(-1, 1, 1, num_layers))**2 -
-                 (self.PSF_marginal_W - loc_W.view(-1, 1, 1, num_layers))**2)/(2*self.psf_stdev**2)).exp()
-        psf = psf/psf.sum([1,2]).view(-1, 1, 1, num_layers)
+        logpsf = (-(self.PSF_marginal_H - loc_H.view(-1, 1, 1, num_layers))**2 -
+                 (self.PSF_marginal_W - loc_W.view(-1, 1, 1, num_layers))**2)/(2*self.psf_stdev**2)
+        psf = (logpsf - logpsf.logsumexp([1,2]).view(-1, 1, 1, num_layers)).exp()
+        
+        return psf
+    
+    def tilePSF(self, num_layers, loc_H, loc_W):
+        logpsf = (-(self.PSF_marginal_H - loc_H.view(loc_H.shape[0], loc_H.shape[1], -1, 1, 1, num_layers))**2 -
+                 (self.PSF_marginal_W - loc_W.view(loc_W.shape[0], loc_W.shape[1], -1, 1, 1, num_layers))**2)/(2*self.psf_stdev**2)
+        psf = (logpsf - logpsf.logsumexp([3, 4]).view(logpsf.shape[0], logpsf.shape[1], -1, 1, 1, num_layers)).exp()
         
         return psf
     
