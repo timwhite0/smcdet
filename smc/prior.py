@@ -24,9 +24,9 @@ class CatalogPrior(object):
                                  torch.tensor((self.img_height, self.img_width)) + self.pad*torch.ones(2))
     
     def sample(self,
+               num_catalogs = 1,
                num_tiles_h = 1,
                num_tiles_w = 1,
-               num_catalogs = 1,
                in_blocks = False,
                num_blocks = None,
                catalogs_per_block = None):

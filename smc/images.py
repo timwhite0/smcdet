@@ -38,7 +38,7 @@ class ImageAttributes(object):
                  prior,
                  num = 1):
         
-        catalogs = prior.sample(num)
+        catalogs = prior.sample(num_catalogs = num)
         counts, fluxes, locs = catalogs
         
         source_intensities = (fluxes.view(num, 1, 1, self.max_objects) * self.PSF(self.max_objects,

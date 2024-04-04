@@ -12,6 +12,7 @@ class SMCsampler(object):
                  prior,
                  num_blocks,
                  catalogs_per_block,
+                 product_form_multiplier,
                  max_smc_iters):
         self.img = img
         self.img_attr = img_attr
@@ -31,7 +32,7 @@ class SMCsampler(object):
         self.kernel_fluxes_stdev = 1000
         self.kernel_locs_stdev = 0.25
         
-        self.m = 200
+        self.m = product_form_multiplier
         
         self.tile_side_length = tile_side_length
         self.num_tiles_h = self.img_attr.img_height//tile_side_length
@@ -112,7 +113,7 @@ class SMCsampler(object):
             c = (a+b)/2
 
         # Set the increase in tau to be the (small quantile)th increase across the tiles and blocks
-        c = c.quantile(0.1).repeat(self.num_tiles_h, self.num_tiles_w, self.num_blocks)
+        c = c.min().repeat(self.num_tiles_h, self.num_tiles_w, self.num_blocks)
 
         self.temperatures_prev = self.temperatures
         self.temperatures = self.temperatures + c
@@ -247,7 +248,8 @@ class SMCsampler(object):
     def prune(self):
         print("Pruning detections...")
         
-        invalid_sources = torch.any(torch.logical_or(self.locs < 0, self.locs > self.tile_side_length), dim = 4)
+        invalid_sources = torch.any(torch.logical_or(self.locs < 0,
+                                                     self.locs > self.tile_side_length), dim = 4)
         invalid_catalogs = invalid_sources.sum(3)
         
         self.counts -= invalid_catalogs
@@ -262,44 +264,40 @@ class SMCsampler(object):
         self.prune()
         
         self.has_run = True
-        
-        
-        
+    
+    @property
+    def image_counts(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        return self.counts.sum([0,1])
+    
+    @property
+    def image_total_flux(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        return self.fluxes.sum([0,1,3])
+    
     @property
     def posterior_mean_count(self):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
-        return (self.counts * self.weights_interblock).sum()
+        return self.image_counts.mean()
     
     @property
     def posterior_mean_total_flux(self):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
-        return (self.fluxes.sum(1) * self.weights_interblock).sum()
+        return self.image_total_flux.mean()
     
-    @property
-    def argmax_count(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
-        argmax_index = self.weights_interblock.argmax()
-        return self.counts[argmax_index].item()
-    
-    @property
-    def argmax_total_flux(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
-        argmax_index = self.weights_interblock.argmax()
-        return self.fluxes[argmax_index].sum().item()
-    
-    @property
-    def reconstructed_image(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
-        argmax_index = self.weights_interblock.argmax()
-        return ((self.img_attr.PSF(self.locs.shape[1],
-                                   self.locs[argmax_index,:,0],
-                                   self.locs[argmax_index,:,1]
-                ) * self.fluxes[argmax_index,:].view(1, 1, -1)).sum(3) + self.img_attr.background_intensity).squeeze()
+    # @property
+    # def reconstructed_image(self):
+    #     if self.has_run == False:
+    #         raise ValueError("Sampler hasn't been run yet.")
+    #     argmax_index = self.weights_interblock.argmax()
+    #     return ((self.img_attr.PSF(self.locs.shape[1],
+    #                                self.locs[argmax_index,:,0],
+    #                                self.locs[argmax_index,:,1]
+    #             ) * self.fluxes[argmax_index,:].view(1, 1, -1)).sum(3) + self.img_attr.background_intensity).squeeze()
     
     def summarize(self, display_images = True):
         if self.has_run == False:
@@ -307,17 +305,14 @@ class SMCsampler(object):
         
         print(f"summary\nnumber of SMC iterations: {self.iter}")
         
-        print(f"log normalizing constant: {self.log_normalizing_constant}")
+        # print(f"log normalizing constant: {self.log_normalizing_constant}")
         
         print(f"posterior mean count: {self.posterior_mean_count}")
         print(f"posterior mean total flux: {self.posterior_mean_total_flux}")
         
-        print(f"argmax count: {self.argmax_count}")
-        print(f"argmax total flux: {self.argmax_total_flux}\n\n\n")
-        
-        if display_images == True:
-            fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
-            _ = original.imshow(self.img.cpu(), origin='lower')
-            _ = original.set_title('original')
-            _ = reconstruction.imshow(self.reconstructed_image.cpu(), origin='lower')
-            _ = reconstruction.set_title('reconstruction')
+        # if display_images == True:
+        #     fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
+        #     _ = original.imshow(self.img.cpu(), origin='lower')
+        #     _ = original.set_title('original')
+        #     _ = reconstruction.imshow(self.reconstructed_image.cpu(), origin='lower')
+        #     _ = reconstruction.set_title('reconstruction')
