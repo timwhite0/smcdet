@@ -7,22 +7,12 @@ class SMCsampler(object):
     def __init__(self,
                  img,
                  img_attr,
-                 tile_side_length,
                  prior,
                  num_blocks,
                  catalogs_per_block,
                  max_smc_iters):
         self.img = img
         self.img_attr = img_attr
-        
-        self.tile_side_length = tile_side_length
-        self.num_tiles_h = self.img_attr.img_height//tile_side_length
-        self.num_tiles_w = self.img_attr.img_width//tile_side_length
-        self.tiles = img.unfold(0,
-                                self.tile_side_length,
-                                self.tile_side_length).unfold(1,
-                                                              self.tile_side_length,
-                                                              self.tile_side_length)
         
         self.prior = prior
         
@@ -35,7 +25,7 @@ class SMCsampler(object):
         self.tempering_tol = 1e-6
         self.tempering_max_iters = 100
         
-        self.kernel_num_iters = 100
+        self.kernel_num_iters = 80
         self.kernel_fluxes_stdev = 1000
         self.kernel_locs_stdev = 0.25
         
@@ -102,8 +92,8 @@ class SMCsampler(object):
 
             c = (a+b)/2
 
-        # For all blocks, set the increase in tau to be the minimum increase across the blocks
-        c = c.min(0).values.repeat(self.num_blocks)
+        # For all blocks, set the increase in tau to be the (small quantile)th increase across the blocks
+        c = c.min().repeat(self.num_blocks)
 
         self.temperatures_prev = self.temperatures
         self.temperatures = self.temperatures + c
