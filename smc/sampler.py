@@ -308,7 +308,7 @@ class SMCsampler(object):
         # print(f"log normalizing constant: {self.log_normalizing_constant}")
         
         print(f"posterior mean count: {self.posterior_mean_count}")
-        print(f"posterior mean total flux: {self.posterior_mean_total_flux}")
+        print(f"posterior mean total flux: {self.posterior_mean_total_flux}\n\n\n")
         
         # if display_images == True:
         #     fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
