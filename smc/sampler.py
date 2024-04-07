@@ -2,6 +2,7 @@ import torch
 from torch.distributions import Poisson, Normal, Uniform
 from smc.distributions import TruncatedDiagonalMVN
 import matplotlib.pyplot as plt
+from scipy.optimize import brentq
 
 class SMCsampler(object):
     def __init__(self,
@@ -22,19 +23,16 @@ class SMCsampler(object):
         
         self.max_smc_iters = max_smc_iters
         
-        self.tempering_tol = 1e-6
-        self.tempering_max_iters = 100
-        
-        self.kernel_num_iters = 80
-        self.kernel_fluxes_stdev = 1000
-        self.kernel_locs_stdev = 0.25
+        self.kernel_num_iters = 100
+        self.kernel_fluxes_stdev = 0.1*self.prior.flux_prior.stddev
+        self.kernel_locs_stdev = 0.1*self.prior.loc_prior.stddev
         
         self.counts, self.fluxes, self.locs = self.prior.sample(in_blocks = True,
                                                                 num_blocks = self.num_blocks,
                                                                 catalogs_per_block = self.catalogs_per_block)
         
-        self.temperatures_prev = torch.zeros(self.num_blocks)
-        self.temperatures = torch.zeros(self.num_blocks)
+        self.temperature_prev = torch.zeros(1)
+        self.temperature = torch.zeros(1)
         
         self.weights_log_unnorm = torch.zeros(self.num_catalogs)
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
@@ -47,7 +45,7 @@ class SMCsampler(object):
         
         self.has_run = False
         
-    def tempered_log_likelihood(self, fluxes, locs, temperatures):
+    def tempered_log_likelihood(self, fluxes, locs, temperature):
         psf = self.img_attr.PSF(locs.shape[1], locs[:,:,0], locs[:,:,1])
         
         rate = (psf * fluxes.view(-1, 1, 1, fluxes.shape[1])).sum(3) + self.img_attr.background_intensity
@@ -55,49 +53,56 @@ class SMCsampler(object):
         
         loglik = Poisson(rate).log_prob(self.img.view(self.img_attr.img_height,
                                                       self.img_attr.img_width, 1)).sum([0,1])
-        tempered_loglik = temperatures.unsqueeze(1) * torch.stack(torch.split(loglik,
-                                                                              self.catalogs_per_block, dim=0), dim=0)
+        tempered_loglik = temperature * loglik
 
         return tempered_loglik
 
     def log_target(self, counts, fluxes, locs, temperature):
-        return self.prior.log_prob(counts, fluxes, locs) + self.tempered_log_likelihood(fluxes, locs, temperature).flatten(0)
+        return self.prior.log_prob(counts, fluxes, locs) + self.tempered_log_likelihood(fluxes, locs, temperature)
 
     def tempering_objective(self, delta):
-        log_numerator = 2*self.tempered_log_likelihood(self.fluxes, self.locs, delta).logsumexp(dim=1)
-        log_denominator = self.tempered_log_likelihood(self.fluxes, self.locs, 2*delta).logsumexp(dim=1)
+        log_numerator = 2*self.tempered_log_likelihood(self.fluxes, self.locs, delta).logsumexp(0)
+        log_denominator = self.tempered_log_likelihood(self.fluxes, self.locs, 2*delta).logsumexp(0)
 
-        return (log_numerator - log_denominator).exp() - self.ESS_threshold
+        return ((log_numerator - log_denominator).exp() - self.num_blocks * self.ESS_threshold)
 
     def temper(self):
-        a = torch.zeros(self.num_blocks)
-        b = 1 - self.temperatures
-        c = (a+b)/2
+        if self.tempering_objective(1 - self.temperature.item()) < 0:
+            delta = brentq(self.tempering_objective, 0.0, 1 - self.temperature.item(), maxiter=500)
+        else:
+            delta = 1 - self.temperature.item()
         
-        f_a = torch.ones(self.num_blocks)
-        f_b = torch.ones(self.num_blocks)
-        f_c = torch.ones(self.num_blocks)
-        
-        # Compute increase in tau for every block using the bisection method
-        for j in range(self.tempering_max_iters):
-            if torch.all((b-a).abs() <= self.tempering_tol):
-                break
-
-            f_a = self.tempering_objective(a)
-            f_b = self.tempering_objective(b)
-            f_c = self.tempering_objective(c)
-            
-            a[f_a.sign() == f_c.sign()] = c[f_a.sign() == f_c.sign()]
-            b[f_b.sign() == f_c.sign()] = c[f_b.sign() == f_c.sign()]
-
-            c = (a+b)/2
-
-        # For all blocks, set the increase in tau to be the (small quantile)th increase across the blocks
-        c = c.min().repeat(self.num_blocks)
-
-        self.temperatures_prev = self.temperatures
-        self.temperatures = self.temperatures + c
+        self.temperature_prev = self.temperature
+        self.temperature = self.temperature + delta
     
+    # ALTERNATIVE: Solving chi-sq dist separately for each block and taking the minimum of the solutions
+
+    # def tempering_objective(self, fluxes, locs, delta):
+    #     log_numerator = 2*self.tempered_log_likelihood(fluxes, locs, delta).logsumexp(0)
+    #     log_denominator = self.tempered_log_likelihood(fluxes, locs, 2*delta).logsumexp(0)
+
+    #     return ((log_numerator - log_denominator).exp() - self.ESS_threshold)
+
+    # def temper(self):
+    #     f = torch.stack(torch.split(self.fluxes, self.catalogs_per_block, dim=0), dim=0)
+    #     l = torch.stack(torch.split(self.locs, self.catalogs_per_block, dim=0), dim=0)
+        
+    #     solutions = torch.zeros(self.num_blocks - 1)
+        
+    #     for block_num in range(1, self.num_blocks):
+    #         def func(delta):
+    #             return self.tempering_objective(f[block_num], l[block_num], delta)
+
+    #         if func(1 - self.temperature.item()) < 0:
+    #             solutions[block_num-1] = brentq(func, 0.0, 1 - self.temperature.item(), maxiter=500)
+    #         else:
+    #             solutions[block_num-1] = 1 - self.temperature.item()
+        
+    #     delta = solutions.min()
+        
+    #     self.temperature_prev = self.temperature
+    #     self.temperature = self.temperature + delta
+
     def resample(self):
         for block_num in range(self.num_blocks):
             if self.ESS[block_num] < self.ESS_threshold:
@@ -131,13 +136,13 @@ class SMCsampler(object):
                                                  torch.tensor(0) - torch.tensor(self.prior.pad),
                                                  torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).sample() * count_indicator.unsqueeze(2)
             
-            log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperatures_prev)
+            log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperature_prev)
             log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_proposal_stdev,
                                                    torch.tensor(0) - torch.tensor(self.prior.pad),
                                                    torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_prev) * count_indicator.unsqueeze(2)).sum([1,2])
 
             if iter == 0:
-                log_denominator = self.log_target(self.counts, fluxes_prev, locs_prev, self.temperatures_prev)
+                log_denominator = self.log_target(self.counts, fluxes_prev, locs_prev, self.temperature_prev)
                 log_denominator += (TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev,
                                                          torch.tensor(0) - torch.tensor(self.prior.pad),
                                                          torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_proposed) * count_indicator.unsqueeze(2)).sum([1,2])
@@ -165,7 +170,7 @@ class SMCsampler(object):
     def update_weights(self):
         weights_log_incremental = self.tempered_log_likelihood(self.fluxes,
                                                                self.locs,
-                                                               self.temperatures - self.temperatures_prev).flatten(0)
+                                                               self.temperature - self.temperature_prev)
         
         self.weights_log_unnorm = self.weights_interblock.log() + weights_log_incremental
         self.weights_log_unnorm = torch.nan_to_num(self.weights_log_unnorm, -torch.inf)
@@ -188,11 +193,11 @@ class SMCsampler(object):
         self.temper()
         self.update_weights()
         
-        while 1 - self.temperatures.unique() >= 1e-4 and self.iter <= self.max_smc_iters:
+        while 1 - self.temperature >= 1e-4 and self.iter <= self.max_smc_iters:
             self.iter += 1
             
             if print_progress == True and self.iter % 5 == 0:
-                print(f"iteration {self.iter}, temperature = {self.temperatures.unique().item()}, posterior mean count = {(self.weights_interblock * self.counts).sum()}")
+                print(f"iteration {self.iter}, temperature = {self.temperature.item()}, posterior mean count = {(self.weights_interblock * self.counts).sum()}")
             
             self.resample()
             self.propagate()
