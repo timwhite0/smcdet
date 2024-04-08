@@ -122,13 +122,13 @@ class SMCsampler(object):
             if self.ESS[block_num] < resample_threshold:
                 u = (torch.arange(num_resample_per_block) + torch.rand(1))/num_resample_per_block
                 bins = self.weights_intrablock[block_num,:].cumsum(0)
-                resampled_index = torch.bucketize(u, bins).clamp(min = 0, max = num_resample_per_block - 1)
+                resampled_index = torch.bucketize(u, bins).clamp(min = 0, max = self.catalogs_per_block - 1)
                 
                 lower = block_num*self.catalogs_per_block
                 upper = lower + num_resample_per_block
                 
-                f = self.fluxes[lower:upper,:]
-                l = self.locs[lower:upper,:,:]
+                f = self.fluxes[lower:(lower + self.catalogs_per_block),:]
+                l = self.locs[lower:(lower + self.catalogs_per_block),:,:]
                 self.fluxes[lower:upper,:] = f[resampled_index,:]
                 self.locs[lower:upper,:,:] = l[resampled_index,:,:]
                 
@@ -219,8 +219,7 @@ class SMCsampler(object):
                                              fluxes_stdev = self.kernel_fluxes_stdev,
                                              locs_stdev = self.kernel_locs_stdev)
         elif self.wastefree == True:
-            self.wastefreeMH(M = self.wastefree_M,
-                             P = self.wastefree_P,
+            self.wastefreeMH(M = self.wastefree_M, P = self.wastefree_P,
                              fluxes_stdev = self.kernel_fluxes_stdev,
                              locs_stdev = self.kernel_locs_stdev)
         
