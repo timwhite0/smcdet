@@ -69,8 +69,10 @@ class SMCsampler(object):
         return self.prior.log_prob(counts, fluxes, locs) + self.tempered_log_likelihood(fluxes, locs, temperature)
 
     def tempering_objective(self, delta):
-        log_numerator = 2*self.tempered_log_likelihood(self.fluxes, self.locs, delta).logsumexp(0)
-        log_denominator = self.tempered_log_likelihood(self.fluxes, self.locs, 2*delta).logsumexp(0)
+        tempered_log_likelihood = self.tempered_log_likelihood(self.fluxes, self.locs, delta)
+
+        log_numerator = 2*(tempered_log_likelihood.logsumexp(0))
+        log_denominator = (2*tempered_log_likelihood).logsumexp(0)
 
         return ((log_numerator - log_denominator).exp() - self.ESS_threshold_tempering)
 
