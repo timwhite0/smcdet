@@ -9,8 +9,9 @@ class SMCsampler(object):
                  img,
                  img_attr,
                  prior,
-                 num_blocks,
+                 max_objects,
                  catalogs_per_block,
+                 kernel_num_iters,
                  max_smc_iters,
                  wastefree = False,
                  wastefree_M = 1):
@@ -19,7 +20,7 @@ class SMCsampler(object):
         
         self.prior = prior
         
-        self.num_blocks = num_blocks
+        self.num_blocks = max_objects + 1
         self.catalogs_per_block = catalogs_per_block
         self.num_catalogs = self.num_blocks * self.catalogs_per_block
         
@@ -29,7 +30,7 @@ class SMCsampler(object):
         self.wastefree_M = wastefree_M
         self.wastefree_P = self.catalogs_per_block // self.wastefree_M
         
-        self.kernel_num_iters = 100
+        self.kernel_num_iters = kernel_num_iters
         self.kernel_fluxes_stdev = 0.1*self.prior.flux_prior.stddev
         self.kernel_locs_stdev = 0.1*self.prior.loc_prior.stddev
         
@@ -44,9 +45,9 @@ class SMCsampler(object):
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
                                                           self.catalogs_per_block, dim=0), dim=0).softmax(1)
         self.weights_interblock = self.weights_log_unnorm.softmax(0)
-        self.log_normalizing_constant = 0 #(self.weights_log_unnorm.exp().mean()).log()
+        self.log_normalizing_constant = torch.zeros(self.num_blocks) #(self.weights_log_unnorm.exp().mean()).log()
         
-        self.ESS_threshold_resampling = 0.5 * self.catalogs_per_block
+        self.ESS_threshold_resampling = self.catalogs_per_block # always resample
         self.ESS_threshold_tempering = 0.5 * self.num_catalogs
         self.ESS = 1/(self.weights_intrablock**2).sum(1)
         
@@ -185,18 +186,21 @@ class SMCsampler(object):
             fluxes_proposed = Normal(fluxes_prev, fluxes_stdev).sample() * count_indicator
             locs_proposed = TruncatedDiagonalMVN(locs_prev, locs_stdev,
                                                  torch.tensor(0) - torch.tensor(self.prior.pad),
-                                                 torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).sample() * count_indicator.unsqueeze(2)
+                                                 torch.tensor(self.img_attr.img_height) +
+                                                    torch.tensor(self.prior.pad)).sample() * count_indicator.unsqueeze(2)
             
             log_numerator = self.log_target(self.counts[index_prev], fluxes_proposed, locs_proposed, self.temperature_prev)
             log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_stdev,
                                                    torch.tensor(0) - torch.tensor(self.prior.pad),
-                                                   torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_prev) * count_indicator.unsqueeze(2)).sum([1,2])
+                                                   torch.tensor(self.img_attr.img_height) +
+                                                    torch.tensor(self.prior.pad)).log_prob(locs_prev) * count_indicator.unsqueeze(2)).sum([1,2])
 
             if p == 1:
                 log_denominator = self.log_target(self.counts[index_prev], fluxes_prev, locs_prev, self.temperature_prev)
                 log_denominator += (TruncatedDiagonalMVN(locs_prev, locs_stdev,
                                                          torch.tensor(0) - torch.tensor(self.prior.pad),
-                                                         torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_proposed) * count_indicator.unsqueeze(2)).sum([1,2])
+                                                         torch.tensor(self.img_attr.img_height) +
+                                                            torch.tensor(self.prior.pad)).log_prob(locs_proposed) * count_indicator.unsqueeze(2)).sum([1,2])
         
             alpha = (log_numerator - log_denominator).exp().clamp(max = 1)
             prob = Uniform(torch.zeros(alpha.shape[0]), torch.ones(alpha.shape[0])).sample()
@@ -231,13 +235,17 @@ class SMCsampler(object):
         self.weights_log_unnorm = self.weights_interblock.log() + weights_log_incremental
         self.weights_log_unnorm = torch.nan_to_num(self.weights_log_unnorm, -torch.inf)
         
-        self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm, self.catalogs_per_block, dim=0), dim = 0).softmax(1)
+        self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
+                                                          self.catalogs_per_block, dim=0), dim = 0).softmax(1)
         self.weights_interblock = self.weights_log_unnorm.softmax(0)
         
-        m = self.weights_log_unnorm.max()
-        w = (self.weights_log_unnorm - m).exp()
-        s = w.sum()
+        weights_log_unnorm_block = torch.stack(torch.split(self.weights_log_unnorm,
+                                                           self.catalogs_per_block, dim=0), dim=0)
+        m = weights_log_unnorm_block.max(1).values
+        w = (weights_log_unnorm_block - m.unsqueeze(1)).exp()
+        s = w.sum(1)
         self.log_normalizing_constant = self.log_normalizing_constant + m + (s/self.num_catalogs).log()
+        # self.log_normalizing_constant = torch.nan_to_num(self.log_normalizing_constant, -torch.inf)
         
         self.ESS = 1/(self.weights_intrablock**2).sum(1)
 
@@ -306,7 +314,7 @@ class SMCsampler(object):
         
         print(f"summary\nnumber of SMC iterations: {self.iter}")
         
-        print(f"log normalizing constant: {self.log_normalizing_constant}")
+        print(f"log normalizing constant:\n{torch.column_stack((torch.arange(self.num_blocks), self.log_normalizing_constant.int()))}")
         
         print(f"posterior mean count: {self.posterior_mean_count}")
         print(f"posterior mean total flux: {self.posterior_mean_total_flux}")
