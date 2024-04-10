@@ -10,7 +10,7 @@ class SMCsampler(object):
                  img_attr,
                  tile_side_length,
                  prior,
-                 num_blocks,
+                 max_objects,
                  catalogs_per_block,
                  product_form_multiplier,
                  max_smc_iters):
@@ -19,7 +19,7 @@ class SMCsampler(object):
         
         self.prior = prior
         
-        self.num_blocks = num_blocks
+        self.num_blocks = max_objects + 1
         self.catalogs_per_block = catalogs_per_block
         self.num_catalogs = self.num_blocks * self.catalogs_per_block
         
@@ -29,10 +29,10 @@ class SMCsampler(object):
         self.tempering_max_iters = 100
         
         self.kernel_num_iters = 100
-        self.kernel_fluxes_stdev = 1000
-        self.kernel_locs_stdev = 0.25
+        self.kernel_fluxes_stdev = 0.1*self.prior.flux_prior.stddev
+        self.kernel_locs_stdev = 0.1*tile_side_length # could also be small multiple of self.prior.loc_prior.stddev
         
-        self.m = product_form_multiplier
+        self.product_form_multiplier = product_form_multiplier
         
         self.tile_side_length = tile_side_length
         self.num_tiles_h = self.img_attr.img_height//tile_side_length
@@ -63,7 +63,8 @@ class SMCsampler(object):
         self.weights_interblock = self.weights_log_unnorm.softmax(2)
         self.log_normalizing_constant = (self.weights_log_unnorm.exp().mean(2)).log()
         
-        self.ESS_threshold = 0.5 * catalogs_per_block
+        self.ESS_threshold_resampling = 0.5 * catalogs_per_block
+        self.ESS_threshold_tempering = 0.5 * catalogs_per_block
         self.ESS = 1/(self.weights_intrablock**2).sum(3)
         
         self.has_run = False
@@ -84,10 +85,12 @@ class SMCsampler(object):
         return self.prior.log_prob(counts, fluxes, locs) + self.tempered_log_likelihood(fluxes, locs, temperature).flatten(2)
 
     def tempering_objective(self, delta):
-        log_numerator = 2*self.tempered_log_likelihood(self.fluxes, self.locs, delta).logsumexp(dim=3)
-        log_denominator = self.tempered_log_likelihood(self.fluxes, self.locs, 2*delta).logsumexp(dim=3)
+        tempered_log_likelihood = self.tempered_log_likelihood(self.fluxes, self.locs, delta)
+        
+        log_numerator = 2 * (tempered_log_likelihood.logsumexp(dim=3))
+        log_denominator = (2 * tempered_log_likelihood).logsumexp(dim=3)
 
-        return (log_numerator - log_denominator).exp() - self.ESS_threshold
+        return (log_numerator - log_denominator).exp() - self.ESS_threshold_tempering
 
     def temper(self):
         a = torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_blocks)
@@ -259,7 +262,7 @@ class SMCsampler(object):
     def run(self, print_progress = True):
         self.run_tiles(print_progress)
         
-        self.resample_interblock(self.m)
+        self.resample_interblock(self.product_form_multiplier)
         
         self.prune()
         
