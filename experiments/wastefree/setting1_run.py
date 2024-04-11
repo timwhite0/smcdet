@@ -14,7 +14,7 @@ import sep
 import torch
 
 # torch.cuda.is_available()
-device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:6" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 torch.set_default_device(device)
 #################################
