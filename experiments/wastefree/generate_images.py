@@ -83,5 +83,3 @@ torch.save(setting2_true_locs, "images/setting2_true_locs.pt")
 torch.save(setting2_true_total_intensities, "images/setting2_true_total_intensities.pt")
 torch.save(setting2_images, "images/setting2_images.pt")
 #################################
-
-
