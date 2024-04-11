@@ -45,7 +45,7 @@ class SMCsampler(object):
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
                                                           self.catalogs_per_block, dim=0), dim=0).softmax(1)
         self.weights_interblock = self.weights_log_unnorm.softmax(0)
-        self.log_normalizing_constant = torch.zeros(self.num_blocks) #(self.weights_log_unnorm.exp().mean()).log()
+        self.log_normalizing_constant = (self.weights_log_unnorm.exp().mean()).log()
         
         self.ESS_threshold_resampling = self.catalogs_per_block # always resample
         self.ESS_threshold_tempering = 0.5 * self.num_catalogs
@@ -68,8 +68,8 @@ class SMCsampler(object):
     def log_target(self, counts, fluxes, locs, temperature):
         return self.prior.log_prob(counts, fluxes, locs) + self.tempered_log_likelihood(fluxes, locs, temperature)
 
-    def tempering_objective(self, delta):
-        tempered_log_likelihood = self.tempered_log_likelihood(self.fluxes, self.locs, delta)
+    def tempering_objective(self, log_likelihood, delta):
+        tempered_log_likelihood = delta * log_likelihood
 
         log_numerator = 2*(tempered_log_likelihood.logsumexp(0))
         log_denominator = (2*tempered_log_likelihood).logsumexp(0)
@@ -77,41 +77,19 @@ class SMCsampler(object):
         return ((log_numerator - log_denominator).exp() - self.ESS_threshold_tempering)
 
     def temper(self):
-        if self.tempering_objective(1 - self.temperature.item()) < 0:
-            delta = brentq(self.tempering_objective, 0.0, 1 - self.temperature.item(), maxiter=500)
+        log_likelihood = self.tempered_log_likelihood(self.fluxes, self.locs, 1)
+        
+        def func(delta):
+            return self.tempering_objective(log_likelihood, delta)
+        
+        if func(1 - self.temperature.item()) < 0:
+            delta = brentq(func, 0.0, 1 - self.temperature.item(),
+                           maxiter=500, xtol=1e-6, rtol=1e-6)
         else:
             delta = 1 - self.temperature.item()
-        
+
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + delta
-    
-    # ALTERNATIVE: Solving chi-sq dist separately for each block and taking the minimum of the solutions
-
-    # def tempering_objective(self, fluxes, locs, delta):
-    #     log_numerator = 2*self.tempered_log_likelihood(fluxes, locs, delta).logsumexp(0)
-    #     log_denominator = self.tempered_log_likelihood(fluxes, locs, 2*delta).logsumexp(0)
-
-    #     return ((log_numerator - log_denominator).exp() - self.ESS_threshold)
-
-    # def temper(self):
-    #     f = torch.stack(torch.split(self.fluxes, self.catalogs_per_block, dim=0), dim=0)
-    #     l = torch.stack(torch.split(self.locs, self.catalogs_per_block, dim=0), dim=0)
-        
-    #     solutions = torch.zeros(self.num_blocks - 1)
-        
-    #     for block_num in range(1, self.num_blocks):
-    #         def func(delta):
-    #             return self.tempering_objective(f[block_num], l[block_num], delta)
-
-    #         if func(1 - self.temperature.item()) < 0:
-    #             solutions[block_num-1] = brentq(func, 0.0, 1 - self.temperature.item(), maxiter=500)
-    #         else:
-    #             solutions[block_num-1] = 1 - self.temperature.item()
-        
-    #     delta = solutions.min()
-        
-    #     self.temperature_prev = self.temperature
-    #     self.temperature = self.temperature + delta
 
     def resample(self):
         if self.wastefree == False:
@@ -243,11 +221,10 @@ class SMCsampler(object):
         
         weights_log_unnorm_block = torch.stack(torch.split(self.weights_log_unnorm,
                                                            self.catalogs_per_block, dim=0), dim=0)
-        m = weights_log_unnorm_block.max(1).values
-        w = (weights_log_unnorm_block - m.unsqueeze(1)).exp()
-        s = w.sum(1)
+        m = weights_log_unnorm_block.max()
+        w = (weights_log_unnorm_block - m).exp()
+        s = w.sum()
         self.log_normalizing_constant = self.log_normalizing_constant + m + (s/self.num_catalogs).log()
-        # self.log_normalizing_constant = torch.nan_to_num(self.log_normalizing_constant, -torch.inf)
         
         self.ESS = 1/(self.weights_intrablock**2).sum(1)
 
@@ -315,9 +292,7 @@ class SMCsampler(object):
             raise ValueError("Sampler hasn't been run yet.")
         
         print(f"summary\nnumber of SMC iterations: {self.iter}")
-        
-        print(f"log normalizing constant:\n{torch.column_stack((torch.arange(self.num_blocks), self.log_normalizing_constant.int()))}")
-        
+        print(f"log normalizing constant: {self.log_normalizing_constant}")
         print(f"posterior mean count: {self.posterior_mean_count}")
         print(f"posterior mean total flux: {self.posterior_mean_total_flux}")
         
