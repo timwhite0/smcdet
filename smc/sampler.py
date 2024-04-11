@@ -3,6 +3,7 @@ from torch.distributions import Poisson, Normal, Uniform
 from smc.distributions import TruncatedDiagonalMVN
 from smc.images import ImageAttributes
 import matplotlib.pyplot as plt
+from scipy.optimize import brentq
 
 class SMCsampler(object):
     def __init__(self,
@@ -12,6 +13,7 @@ class SMCsampler(object):
                  prior,
                  max_objects,
                  catalogs_per_block,
+                 kernel_num_iters,
                  product_form_multiplier,
                  max_smc_iters):
         self.img = img
@@ -25,10 +27,7 @@ class SMCsampler(object):
         
         self.max_smc_iters = max_smc_iters
         
-        self.tempering_tol = 1e-6
-        self.tempering_max_iters = 100
-        
-        self.kernel_num_iters = 100
+        self.kernel_num_iters = kernel_num_iters
         self.kernel_fluxes_stdev = 0.1*self.prior.flux_prior.stddev
         self.kernel_locs_stdev = 0.1*tile_side_length # could also be small multiple of self.prior.loc_prior.stddev
         
@@ -54,8 +53,8 @@ class SMCsampler(object):
                                                                 num_blocks = self.num_blocks,
                                                                 catalogs_per_block = self.catalogs_per_block)
         
-        self.temperatures_prev = torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_blocks)
-        self.temperatures = torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_blocks)
+        self.temperature_prev = torch.zeros(1)
+        self.temperature = torch.zeros(1)
         
         self.weights_log_unnorm = torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_catalogs)
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
@@ -69,57 +68,46 @@ class SMCsampler(object):
         
         self.has_run = False
         
-    def tempered_log_likelihood(self, fluxes, locs, temperatures):
+    def tempered_log_likelihood(self, fluxes, locs, temperature):
         psf = self.tile_attr.tilePSF(locs.shape[3], locs[:,:,:,:,0], locs[:,:,:,:,1])
         
         rate = (psf * fluxes.unsqueeze(3).unsqueeze(3)).sum(5) + self.img_attr.background_intensity
         rate = rate.permute((0, 1, 3, 4, 2))
         
         loglik = Poisson(rate).log_prob(self.tiles.unsqueeze(4)).sum([2, 3])
-        tempered_loglik = temperatures.unsqueeze(3) * torch.stack(torch.split(loglik,
-                                                                              self.catalogs_per_block, dim=2), dim=2)
+        tempered_loglik = temperature * loglik
 
         return tempered_loglik
 
     def log_target(self, counts, fluxes, locs, temperature):
-        return self.prior.log_prob(counts, fluxes, locs) + self.tempered_log_likelihood(fluxes, locs, temperature).flatten(2)
+        return self.prior.log_prob(counts, fluxes, locs) + self.tempered_log_likelihood(fluxes, locs, temperature)
 
-    def tempering_objective(self, delta):
-        tempered_log_likelihood = self.tempered_log_likelihood(self.fluxes, self.locs, delta)
-        
-        log_numerator = 2 * (tempered_log_likelihood.logsumexp(dim=3))
-        log_denominator = (2 * tempered_log_likelihood).logsumexp(dim=3)
+    def tempering_objective(self, log_likelihood, delta):
+        log_numerator = 2 * ((delta * log_likelihood).logsumexp(0))
+        log_denominator = (2 * delta * log_likelihood).logsumexp(0)
 
         return (log_numerator - log_denominator).exp() - self.ESS_threshold_tempering
 
     def temper(self):
-        a = torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_blocks)
-        b = 1 - self.temperatures
-        c = (a+b)/2
+        log_likelihood = self.tempered_log_likelihood(self.fluxes, self.locs, 1)
         
-        f_a = torch.ones(self.num_tiles_h, self.num_tiles_w, self.num_blocks)
-        f_b = torch.ones(self.num_tiles_h, self.num_tiles_w, self.num_blocks)
-        f_c = torch.ones(self.num_tiles_h, self.num_tiles_w, self.num_blocks)
+        solutions = torch.zeros(self.num_tiles_h, self.num_tiles_w)
         
-        # For every tile, compute increase in tau for every block using the bisection method
-        for j in range(self.tempering_max_iters):
-            if torch.all((b-a).abs() <= self.tempering_tol):
-                break
-
-            f_a = self.tempering_objective(a)
-            f_b = self.tempering_objective(b)
-            f_c = self.tempering_objective(c)
-            
-            a[f_a.sign() == f_c.sign()] = c[f_a.sign() == f_c.sign()]
-            b[f_b.sign() == f_c.sign()] = c[f_b.sign() == f_c.sign()]
-
-            c = (a+b)/2
-
-        # Set the increase in tau to be the (small quantile)th increase across the tiles and blocks
-        c = c.min().repeat(self.num_tiles_h, self.num_tiles_w, self.num_blocks)
-
-        self.temperatures_prev = self.temperatures
-        self.temperatures = self.temperatures + c
+        for h in range(self.num_tiles_h):
+            for w in range(self.num_tiles_w):
+                def func(delta):
+                    return self.tempering_objective(log_likelihood[h,w], delta)
+                
+                if func(1 - self.temperature.item()) < 0:
+                    solutions[h,w] = brentq(func, 0.0, 1 - self.temperature.item(),
+                                            maxiter=500, xtol=1e-6, rtol=1e-6)
+                else:
+                    solutions[h,w] = 1 - self.temperature.item()
+                
+        delta = solutions.min()
+        
+        self.temperature_prev = self.temperature
+        self.temperature = self.temperature + delta
     
     def resample(self):
         for block_num in range(self.num_blocks):
@@ -155,13 +143,13 @@ class SMCsampler(object):
                                                  torch.tensor(0) - torch.tensor(self.prior.pad),
                                                  torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).sample() * count_indicator.unsqueeze(4)
             
-            log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperatures_prev)
+            log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperature_prev)
             log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_proposal_stdev,
                                                    torch.tensor(0) - torch.tensor(self.prior.pad),
                                                    torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_prev) * count_indicator.unsqueeze(4)).sum([3,4])
 
             if iter == 0:
-                log_denominator = self.log_target(self.counts, fluxes_prev, locs_prev, self.temperatures_prev)
+                log_denominator = self.log_target(self.counts, fluxes_prev, locs_prev, self.temperature_prev)
                 log_denominator += (TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev,
                                                          torch.tensor(0) - torch.tensor(self.prior.pad),
                                                          torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_proposed) * count_indicator.unsqueeze(4)).sum([3,4])
@@ -190,7 +178,7 @@ class SMCsampler(object):
     def update_weights(self):
         weights_log_incremental = self.tempered_log_likelihood(self.fluxes,
                                                                self.locs,
-                                                               self.temperatures - self.temperatures_prev).flatten(2)
+                                                               self.temperature - self.temperature_prev)
         
         self.weights_log_unnorm = self.weights_interblock.log() + weights_log_incremental
         self.weights_log_unnorm = torch.nan_to_num(self.weights_log_unnorm, -torch.inf)
@@ -213,11 +201,11 @@ class SMCsampler(object):
         self.temper()
         self.update_weights()
         
-        while 1 - self.temperatures.unique() >= 1e-4 and self.iter <= self.max_smc_iters:
+        while 1 - self.temperature >= 1e-4 and self.iter <= self.max_smc_iters:
             self.iter += 1
             
             if print_progress == True and self.iter % 5 == 0:
-                print(f"iteration {self.iter}, temperature = {self.temperatures.unique().item()}")
+                print(f"iteration {self.iter}, temperature = {self.temperature.item()}")
             
             self.resample()
             self.propagate()
