@@ -64,6 +64,8 @@ setting1_std_num_iters = torch.zeros(num_images, len(kernel_num_iters), num_runs
 #################################
 ### RUN SAMPLER
 
+torch.manual_seed(608)
+
 for i in range(num_images):
     for k in range(len(kernel_num_iters)):
         for r in range(num_runs):

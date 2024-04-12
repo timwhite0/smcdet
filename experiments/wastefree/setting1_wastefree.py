@@ -63,6 +63,8 @@ setting1_wf_num_iters = torch.zeros(num_images, len(wastefree_M), num_runs)
 #################################
 ### RUN SAMPLER
 
+torch.manual_seed(608)
+
 for i in range(num_images):
     for m in range(len(wastefree_M)):
         for r in range(num_runs):

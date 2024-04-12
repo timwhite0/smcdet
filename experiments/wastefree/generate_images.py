@@ -60,11 +60,11 @@ setting1_true_total_intensities = setting1_true_total_intensities[indexes]
 setting1_images = setting1_images[indexes]
 
 sys.path.append("experiments/wastefree")
-torch.save(setting1_true_counts, "images/setting1_true_counts.pt")
-torch.save(setting1_true_fluxes, "images/setting1_true_fluxes.pt")
-torch.save(setting1_true_locs, "images/setting1_true_locs.pt")
-torch.save(setting1_true_total_intensities, "images/setting1_true_total_intensities.pt")
-torch.save(setting1_images, "images/setting1_images.pt")
+torch.save(setting1_true_counts.cpu(), "images/setting1_true_counts.pt")
+torch.save(setting1_true_fluxes.cpu(), "images/setting1_true_fluxes.pt")
+torch.save(setting1_true_locs.cpu(), "images/setting1_true_locs.pt")
+torch.save(setting1_true_total_intensities.cpu(), "images/setting1_true_total_intensities.pt")
+torch.save(setting1_images.cpu(), "images/setting1_images.pt")
 #################################
 
 #################################
@@ -77,9 +77,9 @@ num_images = 1000
 
 setting2_true_counts, setting2_true_fluxes, setting2_true_locs, setting2_true_total_intensities, setting2_images = image_attributes.generate(prior, num_images)
 
-torch.save(setting2_true_counts, "images/setting2_true_counts.pt")
-torch.save(setting2_true_fluxes, "images/setting2_true_fluxes.pt")
-torch.save(setting2_true_locs, "images/setting2_true_locs.pt")
-torch.save(setting2_true_total_intensities, "images/setting2_true_total_intensities.pt")
-torch.save(setting2_images, "images/setting2_images.pt")
+torch.save(setting2_true_counts.cpu(), "images/setting2_true_counts.pt")
+torch.save(setting2_true_fluxes.cpu(), "images/setting2_true_fluxes.pt")
+torch.save(setting2_true_locs.cpu(), "images/setting2_true_locs.pt")
+torch.save(setting2_true_total_intensities.cpu(), "images/setting2_true_total_intensities.pt")
+torch.save(setting2_images.cpu(), "images/setting2_images.pt")
 #################################
