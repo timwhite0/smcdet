@@ -45,7 +45,7 @@ image_attributes = ImageAttributes(img_height = img_height,
 #################################
 ### TUNING PARAMETERS AND SAMPLER SETTINGS
 
-N0 = 20000
+N0 = 10000
 wastefree_M = [25, 50, 80, 125, 200]
 
 num_runs = 100

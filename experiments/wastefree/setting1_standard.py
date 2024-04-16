@@ -45,7 +45,7 @@ image_attributes = ImageAttributes(img_height = img_height,
 #################################
 ### TUNING PARAMETERS AND SAMPLER SETTINGS
 
-N0 = 20000
+N0 = 10000
 kernel_num_iters = [5, 25, 50, 100, 200]
 catalogs_per_block = [N0 // k for k in kernel_num_iters]
 
