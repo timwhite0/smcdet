@@ -3,6 +3,7 @@ from torch.distributions import Poisson, Normal, Uniform
 from smc.distributions import TruncatedDiagonalMVN
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
+import time
 
 class SMCsampler(object):
     def __init__(self,
@@ -41,11 +42,12 @@ class SMCsampler(object):
         self.temperature_prev = torch.zeros(1)
         self.temperature = torch.zeros(1)
         
+        self.loglik = self.tempered_log_likelihood(self.fluxes, self.locs, 1) # for caching in tempering step before weight update
+        
         self.weights_log_unnorm = torch.zeros(self.num_catalogs)
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
                                                           self.catalogs_per_block, dim=0), dim=0).softmax(1)
         self.weights_interblock = self.weights_log_unnorm.softmax(0)
-        self.log_normalizing_constant = (self.weights_log_unnorm.exp().mean()).log()
         
         self.ESS_threshold_resampling = self.catalogs_per_block # always resample
         self.ESS_threshold_tempering = 0.5 * self.num_catalogs
@@ -77,14 +79,14 @@ class SMCsampler(object):
         return ((log_numerator - log_denominator).exp() - self.ESS_threshold_tempering)
 
     def temper(self):
-        log_likelihood = self.tempered_log_likelihood(self.fluxes, self.locs, 1)
+        self.loglik = self.tempered_log_likelihood(self.fluxes, self.locs, 1)
         
         def func(delta):
-            return self.tempering_objective(log_likelihood, delta)
+            return self.tempering_objective(self.loglik, delta)
         
         if func(1 - self.temperature.item()) < 0:
             delta = brentq(func, 0.0, 1 - self.temperature.item(),
-                           maxiter=500, xtol=1e-6, rtol=1e-6)
+                           maxiter=500, xtol=1e-8, rtol=1e-8)
         else:
             delta = 1 - self.temperature.item()
 
@@ -208,9 +210,7 @@ class SMCsampler(object):
                              locs_stdev = self.kernel_locs_stdev)
         
     def update_weights(self):
-        weights_log_incremental = self.tempered_log_likelihood(self.fluxes,
-                                                               self.locs,
-                                                               self.temperature - self.temperature_prev)
+        weights_log_incremental = (self.temperature - self.temperature_prev) * self.loglik
         
         self.weights_log_unnorm = self.weights_interblock.log() + weights_log_incremental
         self.weights_log_unnorm = torch.nan_to_num(self.weights_log_unnorm, -torch.inf)
@@ -218,13 +218,6 @@ class SMCsampler(object):
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
                                                           self.catalogs_per_block, dim=0), dim = 0).softmax(1)
         self.weights_interblock = self.weights_log_unnorm.softmax(0)
-        
-        weights_log_unnorm_block = torch.stack(torch.split(self.weights_log_unnorm,
-                                                           self.catalogs_per_block, dim=0), dim=0)
-        m = weights_log_unnorm_block.max()
-        w = (weights_log_unnorm_block - m).exp()
-        s = w.sum()
-        self.log_normalizing_constant = self.log_normalizing_constant + m + (s/self.num_catalogs).log()
         
         self.ESS = 1/(self.weights_intrablock**2).sum(1)
 
@@ -236,7 +229,7 @@ class SMCsampler(object):
         self.temper()
         self.update_weights()
         
-        while 1 - self.temperature >= 1e-4 and self.iter <= self.max_smc_iters:
+        while self.temperature < 1 and self.iter <= self.max_smc_iters:
             self.iter += 1
             
             if print_progress == True and self.iter % 5 == 0:
@@ -278,6 +271,13 @@ class SMCsampler(object):
         return self.fluxes[argmax_index].sum().item()
     
     @property
+    def log_normalizing_constants(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        nll = torch.stack(torch.split(-self.tempered_log_likelihood(self.fluxes, self.locs, 1),
+                                      self.catalogs_per_block, dim=0), dim=0)
+        return -torch.tensor(1/self.catalogs_per_block).log() - nll.logsumexp(1)
+    @property
     def reconstructed_image(self):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
@@ -292,10 +292,9 @@ class SMCsampler(object):
             raise ValueError("Sampler hasn't been run yet.")
         
         print(f"summary\nnumber of SMC iterations: {self.iter}")
-        print(f"log normalizing constant: {self.log_normalizing_constant}")
+        print(f"log normalizing constants:\n{[[x,y] for x,y in zip(*torch.stack((torch.arange(self.num_blocks), self.log_normalizing_constants.round())).int().tolist())]}")
         print(f"posterior mean count: {self.posterior_mean_count}")
         print(f"posterior mean total flux: {self.posterior_mean_total_flux}")
-        
         print(f"argmax count: {self.argmax_count}")
         print(f"argmax total flux: {self.argmax_total_flux}\n\n\n")
         

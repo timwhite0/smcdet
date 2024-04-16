@@ -46,10 +46,10 @@ image_attributes = ImageAttributes(img_height = img_height,
 ### TUNING PARAMETERS AND SAMPLER SETTINGS
 
 N0 = 20000
-kernel_num_iters = [10, 25, 50, 100, 200]
-catalogs_per_block = [(3*N0) // (2*k) for k in kernel_num_iters]
+kernel_num_iters = [5, 25, 50, 100, 200]
+catalogs_per_block = [N0 // k for k in kernel_num_iters]
 
-num_runs = 50
+num_runs = 100
 max_objects = 10
 pad = 0
 prior = CatalogPrior(max_objects, img_width, img_height, background_intensity/3., pad)
@@ -86,7 +86,7 @@ for i in range(num_images):
             
             setting1_std_posterior_mean_count[i,k,r] = smc.posterior_mean_count
             setting1_std_posterior_mean_total_flux[i,k,r] = smc.posterior_mean_total_flux
-            setting1_std_log_normalizing_constant[i,k,r] = smc.log_normalizing_constant
+            setting1_std_log_normalizing_constant[i,k,r] = smc.log_normalizing_constants[true_counts[i]]
             setting1_std_runtime[i,k,r] = end - start
             setting1_std_num_iters[i,k,r] = smc.iter
             

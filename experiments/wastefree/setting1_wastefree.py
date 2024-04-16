@@ -46,9 +46,9 @@ image_attributes = ImageAttributes(img_height = img_height,
 ### TUNING PARAMETERS AND SAMPLER SETTINGS
 
 N0 = 20000
-wastefree_M = [50, 80, 125, 160, 200]
+wastefree_M = [25, 50, 80, 125, 200]
 
-num_runs = 50
+num_runs = 100
 max_objects = 10
 pad = 0
 prior = CatalogPrior(max_objects, img_width, img_height, background_intensity/3., pad)
@@ -85,7 +85,7 @@ for i in range(num_images):
             
             setting1_wf_posterior_mean_count[i,m,r] = smc.posterior_mean_count
             setting1_wf_posterior_mean_total_flux[i,m,r] = smc.posterior_mean_total_flux
-            setting1_wf_log_normalizing_constant[i,m,r] = smc.log_normalizing_constant
+            setting1_wf_log_normalizing_constant[i,m,r] = smc.log_normalizing_constant[true_counts[i]]
             setting1_wf_runtime[i,m,r] = end - start
             setting1_wf_num_iters[i,m,r] = smc.iter
             
