@@ -85,7 +85,7 @@ for i in range(num_images):
             
             setting1_wf_posterior_mean_count[i,m,r] = smc.posterior_mean_count
             setting1_wf_posterior_mean_total_flux[i,m,r] = smc.posterior_mean_total_flux
-            setting1_wf_log_normalizing_constant[i,m,r] = smc.log_normalizing_constant[true_counts[i]]
+            setting1_wf_log_normalizing_constant[i,m,r] = smc.log_normalizing_constants[true_counts[i]]
             setting1_wf_runtime[i,m,r] = end - start
             setting1_wf_num_iters[i,m,r] = smc.iter
             
