@@ -72,8 +72,8 @@ torch.save(setting1_images.cpu(), "images/setting1_images.pt")
 
 torch.manual_seed(608)
 
-# Generate 1000
-num_images = 1000
+# Generate 1500 images
+num_images = 1500
 
 setting2_true_counts, setting2_true_fluxes, setting2_true_locs, setting2_true_total_intensities, setting2_images = image_attributes.generate(prior, num_images)
 
