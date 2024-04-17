@@ -45,8 +45,8 @@ image_attributes = ImageAttributes(img_height = img_height,
 #################################
 ### TUNING PARAMETERS AND SAMPLER SETTINGS
 
-N0 = 20000
-wastefree_M = 125
+N0 = 10000
+wastefree_M = 80
 
 max_objects = 10
 pad = 0
@@ -67,6 +67,8 @@ torch.manual_seed(608)
 
 for i in range(num_images):
     print(f"image {i+1} of {num_images}")
+    print(f"True count: {true_counts[i]}")
+    print(f"True total flux: {true_fluxes[i].sum()}\n")
     
     smc = SMCsampler(images[i], image_attributes, prior,
                         max_objects = max_objects,
@@ -81,7 +83,7 @@ for i in range(num_images):
     
     setting2_wf_posterior_mean_count[i] = smc.posterior_mean_count
     setting2_wf_posterior_mean_total_flux[i] = smc.posterior_mean_total_flux
-    setting2_wf_log_normalizing_constant[i] = smc.log_normalizing_constant
+    setting2_wf_log_normalizing_constant[i] = smc.log_normalizing_constants[true_counts[i]]
     setting2_wf_reconstructed_image[i] = smc.reconstructed_image
     setting2_wf_runtime[i] = end - start
     setting2_wf_num_iters[i] = smc.iter
