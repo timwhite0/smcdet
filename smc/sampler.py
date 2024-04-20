@@ -56,6 +56,8 @@ class SMCsampler(object):
         self.temperature_prev = torch.zeros(1)
         self.temperature = torch.zeros(1)
         
+        self.loglik = self.tempered_log_likelihood(self.fluxes, self.locs, 1) # for caching in tempering step before weight update
+        
         self.weights_log_unnorm = torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_catalogs)
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
                                                           self.catalogs_per_block, dim=2), dim=2).softmax(3)
@@ -89,18 +91,18 @@ class SMCsampler(object):
         return (log_numerator - log_denominator).exp() - self.ESS_threshold_tempering
 
     def temper(self):
-        log_likelihood = self.tempered_log_likelihood(self.fluxes, self.locs, 1)
+        self.loglik = self.tempered_log_likelihood(self.fluxes, self.locs, 1)
         
         solutions = torch.zeros(self.num_tiles_h, self.num_tiles_w)
         
         for h in range(self.num_tiles_h):
             for w in range(self.num_tiles_w):
                 def func(delta):
-                    return self.tempering_objective(log_likelihood[h,w], delta)
+                    return self.tempering_objective(self.loglik[h,w], delta)
                 
                 if func(1 - self.temperature.item()) < 0:
                     solutions[h,w] = brentq(func, 0.0, 1 - self.temperature.item(),
-                                            maxiter=500, xtol=1e-6, rtol=1e-6)
+                                            maxiter=500, xtol=1e-8, rtol=1e-8)
                 else:
                     solutions[h,w] = 1 - self.temperature.item()
                 
@@ -176,9 +178,7 @@ class SMCsampler(object):
                                          locs_stdev = self.kernel_locs_stdev)
         
     def update_weights(self):
-        weights_log_incremental = self.tempered_log_likelihood(self.fluxes,
-                                                               self.locs,
-                                                               self.temperature - self.temperature_prev)
+        weights_log_incremental = (self.temperature - self.temperature_prev) * self.loglik
         
         self.weights_log_unnorm = self.weights_interblock.log() + weights_log_incremental
         self.weights_log_unnorm = torch.nan_to_num(self.weights_log_unnorm, -torch.inf)
@@ -201,7 +201,7 @@ class SMCsampler(object):
         self.temper()
         self.update_weights()
         
-        while 1 - self.temperature >= 1e-4 and self.iter <= self.max_smc_iters:
+        while self.temperature < 1 and self.iter <= self.max_smc_iters:
             self.iter += 1
             
             if print_progress == True and self.iter % 5 == 0:
