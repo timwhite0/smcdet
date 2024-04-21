@@ -29,9 +29,7 @@ class SMCsampler(object):
         
         self.kernel_num_iters = kernel_num_iters
         self.kernel_fluxes_stdev = 0.1*self.prior.flux_prior.stddev
-        self.kernel_locs_stdev = 0.1*tile_side_length # could also be small multiple of self.prior.loc_prior.stddev
-        
-        self.product_form_multiplier = product_form_multiplier
+        self.kernel_locs_stdev = 0.05*self.prior.loc_prior.stddev.unique()
         
         self.tile_side_length = tile_side_length
         self.num_tiles_h = self.img_attr.img_height//tile_side_length
@@ -46,6 +44,13 @@ class SMCsampler(object):
                                          self.prior.max_objects,
                                          self.img_attr.psf_stdev,
                                          self.img_attr.background_intensity)
+        
+        if self.num_tiles_h == 1 and self.num_tiles_w == 1:
+            self.product_form = False
+        else:
+            self.product_form = True
+        
+        self.product_form_multiplier = product_form_multiplier
         
         self.counts, self.fluxes, self.locs = self.prior.sample(num_tiles_h = self.num_tiles_h,
                                                                 num_tiles_w = self.num_tiles_w,
@@ -143,18 +148,18 @@ class SMCsampler(object):
             fluxes_proposed = Normal(fluxes_prev, fluxes_proposal_stdev).sample() * count_indicator
             locs_proposed = TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev,
                                                  torch.tensor(0) - torch.tensor(self.prior.pad),
-                                                 torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).sample() * count_indicator.unsqueeze(4)
+                                                 torch.tensor(self.tile_attr.img_height) + torch.tensor(self.prior.pad)).sample() * count_indicator.unsqueeze(4)
             
             log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperature_prev)
             log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_proposal_stdev,
                                                    torch.tensor(0) - torch.tensor(self.prior.pad),
-                                                   torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_prev) * count_indicator.unsqueeze(4)).sum([3,4])
+                                                   torch.tensor(self.tile_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_prev) * count_indicator.unsqueeze(4)).sum([3,4])
 
             if iter == 0:
                 log_denominator = self.log_target(self.counts, fluxes_prev, locs_prev, self.temperature_prev)
                 log_denominator += (TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev,
                                                          torch.tensor(0) - torch.tensor(self.prior.pad),
-                                                         torch.tensor(self.img_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_proposed) * count_indicator.unsqueeze(4)).sum([3,4])
+                                                         torch.tensor(self.tile_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_proposed) * count_indicator.unsqueeze(4)).sum([3,4])
         
             alpha = (log_numerator - log_denominator).exp().clamp(max = 1)
             prob = Uniform(torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_catalogs),
@@ -250,9 +255,9 @@ class SMCsampler(object):
     def run(self, print_progress = True):
         self.run_tiles(print_progress)
         
-        self.resample_interblock(self.product_form_multiplier)
-        
-        self.prune()
+        if self.product_form == True:
+            self.resample_interblock(self.product_form_multiplier)
+            self.prune()
         
         self.has_run = True
     
@@ -260,13 +265,23 @@ class SMCsampler(object):
     def image_counts(self):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
-        return self.counts.sum([0,1])
+        
+        if self.product_form == True:
+            image_counts = self.counts.sum([0,1])
+        elif self.product_form == False:
+            image_counts = (self.counts.squeeze() * self.weights_interblock).sum()
+        return image_counts
     
     @property
     def image_total_flux(self):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
-        return self.fluxes.sum([0,1,3])
+        
+        if self.product_form == True:
+            image_total_flux = self.fluxes.sum([0,1,3])
+        elif self.product_form == False:
+            image_total_flux = (self.fluxes.squeeze().sum(1) * self.weights_interblock).sum()
+        return image_total_flux
     
     @property
     def posterior_mean_count(self):
@@ -295,9 +310,7 @@ class SMCsampler(object):
             raise ValueError("Sampler hasn't been run yet.")
         
         print(f"summary\nnumber of SMC iterations: {self.iter}")
-        
-        # print(f"log normalizing constant: {self.log_normalizing_constant}")
-        
+                
         print(f"posterior mean count: {self.posterior_mean_count}")
         print(f"posterior mean total flux: {self.posterior_mean_total_flux}\n\n\n")
         
