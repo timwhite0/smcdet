@@ -7,45 +7,92 @@ class ImageAttributes(object):
                  img_width: int,
                  max_objects: int,
                  psf_stdev: float,
-                 background_intensity: float):
+                 background: float):
         
         self.img_height = img_height
         self.img_width = img_width
-        self.PSF_marginal_H = (1 + torch.arange(self.img_height, dtype=torch.float32)).view(1, self.img_height, 1, 1)
-        self.PSF_marginal_W = (1 + torch.arange(self.img_width, dtype=torch.float32)).view(1, 1, self.img_width, 1)
+        self.PSF_marginal_H = (torch.arange(self.img_height, dtype=torch.float32)).view(1, self.img_height, 1, 1)
+        self.PSF_marginal_W = (torch.arange(self.img_width, dtype=torch.float32)).view(1, 1, self.img_width, 1)
         
         self.max_objects = max_objects
-        self.max_count = self.max_objects + 1
         
         self.psf_stdev = psf_stdev
-        self.background_intensity = background_intensity
+        self.background = background
     
-    def PSF(self, num_layers, loc_H, loc_W):
-        logpsf = (-(self.PSF_marginal_H - loc_H.view(-1, 1, 1, num_layers))**2 -
-                 (self.PSF_marginal_W - loc_W.view(-1, 1, 1, num_layers))**2)/(2*self.psf_stdev**2)
-        psf = (logpsf - logpsf.logsumexp([1,2]).view(-1, 1, 1, num_layers)).exp()
+    
+    def Ellipse(self, num_layers, locs, axes, angles):
+        loc_H = locs[:,:,0].view(-1, 1, 1, num_layers)
+        loc_W = locs[:,:,1].view(-1, 1, 1, num_layers)
+        axis_H = axes[:,:,0].view(-1, 1, 1, num_layers)
+        axis_W = axes[:,:,1].view(-1, 1, 1, num_layers)
+        cos_angles = torch.cos(angles).view(-1, 1, 1, num_layers)
+        sin_angles = torch.sin(angles).view(-1, 1, 1, num_layers)
+        
+        x = torch.arange(0., self.img_height)
+        y = torch.arange(0., self.img_height)
+        X, Y = torch.meshgrid(x, y, indexing="ij")
+        X = X.view(1, self.img_height, self.img_width, 1)
+        Y = Y.view(1, self.img_height, self.img_width, 1)
+        
+        Xrot = ((X - loc_H) * cos_angles) - ((Y - loc_W) * sin_angles) + loc_H
+        Yrot = ((X - loc_H) * sin_angles) + ((Y - loc_W) * cos_angles) + loc_W
+
+        ellipse_mask = 1*(((Xrot - loc_H) / axis_H) ** 2 + ((Yrot - loc_W) / axis_W) ** 2 <= 1)
+        
+        return ellipse_mask
+    
+    
+    def tileEllipse(self, tile_slen, num_layers, locs, axes, angles):
+        loc_H = locs[:,:,:,:,0].view(locs.shape[0], locs.shape[1], -1, 1, 1, num_layers)
+        loc_W = locs[:,:,:,:,1].view(locs.shape[0], locs.shape[1], -1, 1, 1, num_layers)
+        axis_H = axes[:,:,:,:,0].view(axes.shape[0], axes.shape[1], -1, 1, 1, num_layers)
+        axis_W = axes[:,:,:,:,1].view(axes.shape[0], axes.shape[1], -1, 1, 1, num_layers)
+        cos_angles = torch.cos(angles).view(angles.shape[0], angles.shape[1], -1, 1, 1, num_layers)
+        sin_angles = torch.sin(angles).view(angles.shape[0], angles.shape[1], -1, 1, 1, num_layers)
+        
+        x = torch.arange(0., tile_slen)
+        y = torch.arange(0., tile_slen)
+        X, Y = torch.meshgrid(x, y, indexing="ij")
+        X = X.view(1, 1, 1, tile_slen, tile_slen, 1)
+        Y = Y.view(1, 1, 1, tile_slen, tile_slen, 1)
+        
+        Xrot = ((X - loc_H) * cos_angles) - ((Y - loc_W) * sin_angles) + loc_H
+        Yrot = ((X - loc_H) * sin_angles) + ((Y - loc_W) * cos_angles) + loc_W
+
+        ellipse_mask = 1*(((Xrot - loc_H) / axis_H) ** 2 + ((Yrot - loc_W) / axis_W) ** 2 <= 1)
+        
+        return ellipse_mask
+
+
+    def PSF(self, num_layers, locs):
+        loc_H = locs[:,:,0].view(-1, 1, 1, num_layers)
+        loc_W = locs[:,:,1].view(-1, 1, 1, num_layers)
+        logpsf = (-(self.PSF_marginal_H - loc_H)**2 - (self.PSF_marginal_W - loc_W)**2)/(2*(self.psf_stdev**2))
+        psf = (logpsf).exp()
         
         return psf
     
-    def tilePSF(self, num_layers, loc_H, loc_W):
-        logpsf = (-(self.PSF_marginal_H - loc_H.view(loc_H.shape[0], loc_H.shape[1], -1, 1, 1, num_layers))**2 -
-                 (self.PSF_marginal_W - loc_W.view(loc_W.shape[0], loc_W.shape[1], -1, 1, 1, num_layers))**2)/(2*self.psf_stdev**2)
-        psf = (logpsf - logpsf.logsumexp([3, 4]).view(logpsf.shape[0], logpsf.shape[1], -1, 1, 1, num_layers)).exp()
+    
+    def tilePSF(self, num_layers, locs):
+        loc_H = locs[:,:,:,:,0].view(locs.shape[0], locs.shape[1], -1, 1, 1, num_layers)
+        loc_W = locs[:,:,:,:,1].view(locs.shape[0], locs.shape[1], -1, 1, 1, num_layers)
+        logpsf = (-(self.PSF_marginal_H - loc_H)**2 - (self.PSF_marginal_W - loc_W)**2)/(2*self.psf_stdev**2)
+        psf = (logpsf).exp()
         
         return psf
+    
     
     def generate(self,
                  prior,
                  num = 1):
         
-        catalogs = prior.sample(num_catalogs = num)
-        counts, fluxes, locs = catalogs
+        counts, fluors, locs, axes, angles = prior.sample(num_catalogs = num)
         
-        source_intensities = (fluxes.view(num, 1, 1, self.max_objects) * self.PSF(self.max_objects,
-                                                                                  locs[:,:,0],
-                                                                                  locs[:,:,1])).sum(3)
-        total_intensities = source_intensities + self.background_intensity
+        cell_intensities = fluors.view(num, 1, 1, self.max_objects) * self.Ellipse(self.max_objects, locs, axes, angles) * self.PSF(self.max_objects, locs)
+        cell_intensities = (cell_intensities).sum(3)
+        
+        total_intensities = cell_intensities + torch.normal(torch.zeros_like(cell_intensities), (0.1*self.background)*torch.ones_like(cell_intensities)) + self.background
         
         images = Poisson(total_intensities).sample()
         
-        return [counts, fluxes, locs, total_intensities, images]
+        return [counts, fluors, locs, axes, angles, total_intensities, images]

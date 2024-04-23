@@ -28,8 +28,10 @@ class SMCsampler(object):
         self.max_smc_iters = max_smc_iters
         
         self.kernel_num_iters = kernel_num_iters
-        self.kernel_fluxes_stdev = 0.1*self.prior.flux_prior.stddev
+        self.kernel_fluors_stdev = 0.1*self.prior.fluor_prior.stddev
         self.kernel_locs_stdev = 0.05*self.prior.loc_prior.stddev.unique()
+        self.kernel_axes_stdev = 0.05*self.prior.axis_prior.stddev.unique()
+        self.kernel_angles_stdev = 0.05*self.prior.angle_prior.stddev.unique()
         
         self.tile_side_length = tile_side_length
         self.num_tiles_h = self.img_attr.img_height//tile_side_length
@@ -43,7 +45,7 @@ class SMCsampler(object):
                                          self.tile_side_length,
                                          self.prior.max_objects,
                                          self.img_attr.psf_stdev,
-                                         self.img_attr.background_intensity)
+                                         self.img_attr.background)
         
         if self.num_tiles_h == 1 and self.num_tiles_w == 1:
             self.product_form = False
@@ -52,16 +54,17 @@ class SMCsampler(object):
         
         self.product_form_multiplier = product_form_multiplier
         
-        self.counts, self.fluxes, self.locs = self.prior.sample(num_tiles_h = self.num_tiles_h,
-                                                                num_tiles_w = self.num_tiles_w,
-                                                                in_blocks = True,
-                                                                num_blocks = self.num_blocks,
-                                                                catalogs_per_block = self.catalogs_per_block)
+        catalogs = self.prior.sample(num_tiles_h = self.num_tiles_h,
+                                     num_tiles_w = self.num_tiles_w,
+                                     in_blocks = True,
+                                     num_blocks = self.num_blocks,
+                                     catalogs_per_block = self.catalogs_per_block)
+        self.counts, self.fluors, self.locs, self.axes, self.angles = catalogs
         
         self.temperature_prev = torch.zeros(1)
         self.temperature = torch.zeros(1)
         
-        self.loglik = self.tempered_log_likelihood(self.fluxes, self.locs, 1) # for caching in tempering step before weight update
+        # self.loglik = self.tempered_log_likelihood(self.fluors, self.locs, self.axes, self.angles, 1) # for caching in tempering step before weight update
         
         self.weights_log_unnorm = torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_catalogs)
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
@@ -75,10 +78,11 @@ class SMCsampler(object):
         
         self.has_run = False
         
-    def tempered_log_likelihood(self, fluxes, locs, temperature):
-        psf = self.tile_attr.tilePSF(locs.shape[3], locs[:,:,:,:,0], locs[:,:,:,:,1])
+    def tempered_log_likelihood(self, fluors, locs, axes, angles, temperature):
+        ellipse = self.tile_attr.tileEllipse(self.tile_attr.img_height, locs.shape[3], locs, axes, angles)
+        psf = self.tile_attr.tilePSF(locs.shape[3], locs)
         
-        rate = (psf * fluxes.unsqueeze(3).unsqueeze(3)).sum(5) + self.img_attr.background_intensity
+        rate = (fluors.unsqueeze(3).unsqueeze(3) * ellipse * psf).sum(5) + self.tile_attr.background
         rate = rate.permute((0, 1, 3, 4, 2))
         
         loglik = Poisson(rate).log_prob(self.tiles.unsqueeze(4)).sum([2, 3])
@@ -295,16 +299,6 @@ class SMCsampler(object):
             raise ValueError("Sampler hasn't been run yet.")
         return self.image_total_flux.mean()
     
-    # @property
-    # def reconstructed_image(self):
-    #     if self.has_run == False:
-    #         raise ValueError("Sampler hasn't been run yet.")
-    #     argmax_index = self.weights_interblock.argmax()
-    #     return ((self.img_attr.PSF(self.locs.shape[1],
-    #                                self.locs[argmax_index,:,0],
-    #                                self.locs[argmax_index,:,1]
-    #             ) * self.fluxes[argmax_index,:].view(1, 1, -1)).sum(3) + self.img_attr.background_intensity).squeeze()
-    
     def summarize(self, display_images = True):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
@@ -313,10 +307,3 @@ class SMCsampler(object):
                 
         print(f"posterior mean count: {self.posterior_mean_count}")
         print(f"posterior mean total flux: {self.posterior_mean_total_flux}\n\n\n")
-        
-        # if display_images == True:
-        #     fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
-        #     _ = original.imshow(self.img.cpu(), origin='lower')
-        #     _ = original.set_title('original')
-        #     _ = reconstruction.imshow(self.reconstructed_image.cpu(), origin='lower')
-        #     _ = reconstruction.set_title('reconstruction')
