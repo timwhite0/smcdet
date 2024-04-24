@@ -67,7 +67,8 @@ class CellPrior(object):
         count_indicator = 1 + torch.arange(dim).unsqueeze(0) <= counts.unsqueeze(3)
 
         log_prior = self.count_prior.log_prob(counts)
-        log_prior += (self.fluor_prior.log_prob(fluors) * count_indicator).sum(3)
+        log_prior += (self.fluor_prior.log_prob(fluors +
+                                                self.fluor_prior.mean * (fluors==0)) * count_indicator).sum(3)
         log_prior += (self.loc_prior.log_prob(locs) * count_indicator.unsqueeze(4)).sum([3,4])
         log_prior += (self.axis_prior.log_prob(axes +
                                                self.axis_prior.mean.unique() * (axes==0)) * count_indicator.unsqueeze(4)).sum([3,4])
