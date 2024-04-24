@@ -52,9 +52,9 @@ class SMCsampler(object):
         
         self.kernel_num_iters = kernel_num_iters
         
-        self.kernel_fluors_stdev = 0.1*self.prior.fluor_prior.stddev * torch.ones(1)
-        self.kernel_fluors_low = self.prior.fluor_prior.low * torch.ones(1)
-        self.kernel_fluors_high = self.prior.fluor_prior.high * torch.ones(1)
+        self.kernel_fluors_stdev = 0.1*self.prior.fluor_prior.base_dist.stddev * torch.ones(1)
+        self.kernel_fluors_low = self.prior.fluor_prior.lb * torch.ones(1)
+        self.kernel_fluors_high = self.prior.fluor_prior.ub * torch.ones(1)
         
         self.kernel_locs_stdev = 0.25 * torch.ones(1)
         self.kernel_locs_low = torch.zeros(1) - torch.tensor(self.prior.pad)
@@ -87,7 +87,7 @@ class SMCsampler(object):
         self.weights_interblock = self.weights_log_unnorm.softmax(2)
         self.log_normalizing_constant = (self.weights_log_unnorm.exp().mean(2)).log()
         
-        self.ESS_threshold_resampling = 0.5 * catalogs_per_block
+        self.ESS_threshold_resampling = catalogs_per_block
         self.ESS_threshold_tempering = 0.5 * catalogs_per_block
         self.ESS = 1/(self.weights_intrablock**2).sum(3)
         
@@ -190,7 +190,7 @@ class SMCsampler(object):
             log_numerator += (TruncatedDiagonalMVN(fluors_proposed, self.kernel_fluors_stdev,
                                                    self.kernel_fluors_low,
                                                    self.kernel_fluors_high).log_prob(fluors_prev +
-                                                                                     self.prior.fluor_prior.mean * (fluors_prev==0.)) * count_indicator).nan_to_num().sum(3)
+                                                                                     self.prior.fluor_prior.base_dist.mean * (fluors_prev==0.)) * count_indicator).nan_to_num().sum(3)
             log_numerator += (TruncatedDiagonalMVN(locs_proposed, self.kernel_locs_stdev,
                                                    self.kernel_locs_low, self.kernel_locs_high).log_prob(locs_prev) * count_indicator.unsqueeze(4)).sum([3,4])
             log_numerator += (TruncatedDiagonalMVN(axes_proposed, self.kernel_axes_stdev,
@@ -206,7 +206,7 @@ class SMCsampler(object):
                 log_denominator += (TruncatedDiagonalMVN(fluors_prev, self.kernel_fluors_stdev,
                                                          self.kernel_fluors_low,
                                                          self.kernel_fluors_high).log_prob(fluors_proposed +
-                                                                                           self.prior.fluor_prior.mean * (fluors_proposed==0.)) * count_indicator).nan_to_num().sum(3)
+                                                                                           self.prior.fluor_prior.base_dist.mean * (fluors_proposed==0.)) * count_indicator).nan_to_num().sum(3)
                 log_denominator += (TruncatedDiagonalMVN(locs_prev, self.kernel_locs_stdev,
                                                          self.kernel_locs_low, self.kernel_locs_high).log_prob(locs_proposed) * count_indicator.unsqueeze(4)).sum([3,4])
                 log_denominator += (TruncatedDiagonalMVN(axes_prev, self.kernel_axes_stdev,

@@ -21,11 +21,10 @@ class TruncatedDiagonalMVN(Distribution):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.base_dist})"
 
-    def sample(self, **args):
-        p = torch.rand(tuple(self.dim)).clamp(min = 1e-6, max = 1.0 - 1e-6)
+    def sample(self, sample_shape=(1,), **args):
+        p = torch.rand(sample_shape).clamp(min = 1e-6, max = 1.0 - 1e-6)
         p_tilde = self.base_dist.cdf(self.lb) + p * (self.log_prob_in_box.exp())
         x = self.base_dist.icdf(p_tilde)
-        
         return x
 
     @property
