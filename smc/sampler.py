@@ -4,6 +4,7 @@ from smc.distributions import TruncatedDiagonalMVN
 from smc.images import ImageAttributes
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
+from torchvision.transforms.v2.functional import gaussian_blur
 
 class SMCsampler(object):
     def __init__(self,
@@ -44,6 +45,7 @@ class SMCsampler(object):
         self.tile_attr = ImageAttributes(self.tile_side_length,
                                          self.tile_side_length,
                                          self.prior.max_objects,
+                                         self.img_attr.psf_size,
                                          self.img_attr.psf_stdev,
                                          self.img_attr.background)
         
@@ -64,7 +66,7 @@ class SMCsampler(object):
         self.temperature_prev = torch.zeros(1)
         self.temperature = torch.zeros(1)
         
-        # self.loglik = self.tempered_log_likelihood(self.fluors, self.locs, self.axes, self.angles, 1) # for caching in tempering step before weight update
+        self.loglik = self.tempered_log_likelihood(self.fluors, self.locs, self.axes, self.angles, 1) # for caching in tempering step before weight update
         
         self.weights_log_unnorm = torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_catalogs)
         self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
@@ -80,12 +82,14 @@ class SMCsampler(object):
         
     def tempered_log_likelihood(self, fluors, locs, axes, angles, temperature):
         ellipse = self.tile_attr.tileEllipse(self.tile_attr.img_height, locs.shape[3], locs, axes, angles)
-        psf = self.tile_attr.tilePSF(locs.shape[3], locs)
         
-        rate = (fluors.unsqueeze(3).unsqueeze(3) * ellipse * psf).sum(5) + self.tile_attr.background
-        rate = rate.permute((0, 1, 3, 4, 2))
+        cell_intensities = (fluors.unsqueeze(3).unsqueeze(3) * ellipse).sum(5)
         
-        loglik = Poisson(rate).log_prob(self.tiles.unsqueeze(4)).sum([2, 3])
+        total_intensities = gaussian_blur(cell_intensities + self.tile_attr.background,
+                                          kernel_size = self.tile_attr.psf_size, sigma = self.tile_attr.psf_stdev)
+        total_intensities = total_intensities.permute((0, 1, 3, 4, 2))
+        
+        loglik = Poisson(total_intensities).log_prob(self.tiles.unsqueeze(4)).sum([2, 3])
         tempered_loglik = temperature * loglik
 
         return tempered_loglik

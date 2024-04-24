@@ -1,11 +1,13 @@
 import torch
 from torch.distributions import Poisson
+from torchvision.transforms.v2.functional import gaussian_blur
 
 class ImageAttributes(object):
     def __init__(self,
                  img_height: int,
                  img_width: int,
                  max_objects: int,
+                 psf_size: int,
                  psf_stdev: float,
                  background: float):
         
@@ -16,6 +18,7 @@ class ImageAttributes(object):
         
         self.max_objects = max_objects
         
+        self.psf_size = psf_size
         self.psf_stdev = psf_stdev
         self.background = background
     
@@ -88,10 +91,13 @@ class ImageAttributes(object):
         
         counts, fluors, locs, axes, angles = prior.sample(num_catalogs = num)
         
-        cell_intensities = fluors.view(num, 1, 1, self.max_objects) * self.Ellipse(self.max_objects, locs, axes, angles) * self.PSF(self.max_objects, locs)
+        cell_intensities = fluors.view(num, 1, 1, self.max_objects) * self.Ellipse(self.max_objects, locs, axes, angles)
         cell_intensities = (cell_intensities).sum(3)
         
-        total_intensities = cell_intensities + torch.normal(torch.zeros_like(cell_intensities), (0.1*self.background)*torch.ones_like(cell_intensities)) + self.background
+        total_intensities = gaussian_blur(cell_intensities + self.background,
+                                          kernel_size = self.psf_size, sigma = self.psf_stdev)
+        total_intensities *= torch.normal(torch.ones_like(cell_intensities),
+                                          0.05*torch.ones_like(cell_intensities)).clamp(min=1e-1)
         
         images = Poisson(total_intensities).sample()
         
