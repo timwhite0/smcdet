@@ -33,7 +33,8 @@ class CellPrior(object):
                num_tiles_w = 1,
                in_blocks = False,
                num_blocks = None,
-               catalogs_per_block = None):
+               catalogs_per_block = None,
+               axes_angles = False):
         
         if in_blocks is True and (num_blocks is None or catalogs_per_block is None):
             raise ValueError("If in_blocks is True, need to specify num_blocks and catalogs_per_block.")
@@ -47,8 +48,12 @@ class CellPrior(object):
             
             fluors = self.fluor_prior.sample([num_catalogs, self.max_objects]) * count_indicator
             locs = self.loc_prior.sample([num_catalogs, self.max_objects]) * count_indicator.unsqueeze(2)
-            axes = self.axis_prior.sample([num_catalogs, self.max_objects]) * count_indicator.unsqueeze(2)
-            angles = self.angle_prior.sample([num_catalogs, self.max_objects]) * count_indicator
+            if axes_angles == False:
+                axes = torch.tensor((9,6)).view(1,1,2) * torch.ones([num_catalogs, self.max_objects, 2]) * count_indicator.unsqueeze(2)
+                angles = (torch.pi/4.) * torch.ones([num_catalogs, self.max_objects]) * count_indicator
+            elif axes_angles == True:
+                axes = self.axis_prior.sample([num_catalogs, self.max_objects]) * count_indicator.unsqueeze(2)
+                angles = self.angle_prior.sample([num_catalogs, self.max_objects]) * count_indicator
         elif in_blocks is True:
             dim = num_blocks
             num_catalogs = num_blocks * catalogs_per_block
@@ -58,14 +63,18 @@ class CellPrior(object):
                    
             fluors = self.fluor_prior.sample([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator
             locs = self.loc_prior.sample([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator.unsqueeze(4)
-            axes = self.axis_prior.sample([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator.unsqueeze(4)
-            angles = self.angle_prior.sample([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator
+            if axes_angles == False:
+                axes = torch.tensor((9,6)).view(1,1,1,1,-1) * torch.ones([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects, 2]) * count_indicator.unsqueeze(4)
+                angles = (torch.pi / 4.)*torch.ones([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator
+            elif axes_angles == True:
+                axes = self.axis_prior.sample([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator.unsqueeze(4)
+                angles = self.angle_prior.sample([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator
             
         return [counts, fluors, locs, axes, angles]
     
     # log_prob is defined for the in_blocks case within a SMCsampler
     def log_prob(self,
-                 counts, fluors, locs, axes, angles):
+                 counts, fluors, locs, axes = None, angles = None, axes_angles = False):
 
         dim = fluors.shape[3]
         
@@ -75,8 +84,9 @@ class CellPrior(object):
         log_prior += (self.fluor_prior.log_prob(fluors +
                                                 self.fluor_prior.base_dist.mean * (fluors==0)) * count_indicator).sum(3)
         log_prior += (self.loc_prior.log_prob(locs) * count_indicator.unsqueeze(4)).sum([3,4])
-        log_prior += (self.axis_prior.log_prob(axes +
-                                               self.axis_prior.mean.unique() * (axes==0)) * count_indicator.unsqueeze(4)).sum([3,4])
-        log_prior += (self.angle_prior.log_prob(angles) * count_indicator).sum(3)
+        if axes_angles == True:
+            log_prior += (self.axis_prior.log_prob(axes +
+                                                self.axis_prior.mean.unique() * (axes==0)) * count_indicator.unsqueeze(4)).sum([3,4])
+            log_prior += (self.angle_prior.log_prob(angles) * count_indicator).sum(3)
         
         return log_prior
