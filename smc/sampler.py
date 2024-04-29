@@ -121,14 +121,13 @@ class SMCsampler(object):
 
     def temper(self):
         self.loglik = self.tempered_log_likelihood(self.fluors, self.locs, self.axes, self.angles, 1)
-        loglik = self.loglik.cpu()
         
         solutions = torch.zeros(self.num_tiles_h, self.num_tiles_w)
         
         for h in range(self.num_tiles_h):
             for w in range(self.num_tiles_w):
                 def func(delta):
-                    return self.tempering_objective(loglik[h,w], delta)
+                    return self.tempering_objective(self.loglik[h,w], delta)
                 
                 if func(1 - self.temperature.item()) < 0:
                     solutions[h,w] = brentq(func, 0.0, 1 - self.temperature.item(),
