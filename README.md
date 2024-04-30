@@ -1,3 +1,5 @@
-# SMC for probabilistic object detection
+# Sequential Monte Carlo for probabilistic cell detection in microscopy images
 
-Distinguishing and characterizing objects in images with sequential Monte Carlo samplers.
+## BIOSTAT 882 final project, winter 2024
+
+## Tim White
