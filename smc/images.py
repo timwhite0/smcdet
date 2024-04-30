@@ -71,7 +71,7 @@ class ImageAttributes(object):
         loc_H = locs[:,:,0].view(-1, 1, 1, num_layers)
         loc_W = locs[:,:,1].view(-1, 1, 1, num_layers)
         logpsf = (-(self.PSF_marginal_H - loc_H)**2 - (self.PSF_marginal_W - loc_W)**2)/(2*(self.psf_stdev**2))
-        psf = (logpsf).exp()
+        psf = (logpsf - logpsf.logsumexp([1,2]).view(-1, 1, 1, num_layers)).exp()
         
         return psf
     
@@ -80,7 +80,7 @@ class ImageAttributes(object):
         loc_H = locs[:,:,:,:,0].view(locs.shape[0], locs.shape[1], -1, 1, 1, num_layers)
         loc_W = locs[:,:,:,:,1].view(locs.shape[0], locs.shape[1], -1, 1, 1, num_layers)
         logpsf = (-(self.PSF_marginal_H - loc_H)**2 - (self.PSF_marginal_W - loc_W)**2)/(2*self.psf_stdev**2)
-        psf = (logpsf).exp()
+        psf = (logpsf - logpsf.logsumexp([3, 4]).view(logpsf.shape[0], logpsf.shape[1], -1, 1, 1, num_layers)).exp()
         
         return psf
     
@@ -94,11 +94,8 @@ class ImageAttributes(object):
         cell_intensities = fluors.view(num, 1, 1, self.max_objects) * self.Ellipse(self.max_objects, locs, axes, angles)
         cell_intensities = (cell_intensities).sum(3)
         
-        total_intensities = gaussian_blur(cell_intensities + self.background,
-                                          kernel_size = self.psf_size, sigma = self.psf_stdev)
-        total_intensities *= torch.normal(torch.ones_like(cell_intensities),
-                                          0.05*torch.ones_like(cell_intensities)).clamp(min=1e-1)
-        
+        total_intensities = gaussian_blur(cell_intensities, kernel_size = self.psf_size, sigma = self.psf_stdev) + self.background
+
         images = Poisson(total_intensities).sample()
         
         return [counts, fluors, locs, axes, angles, total_intensities, images]

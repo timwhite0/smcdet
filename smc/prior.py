@@ -1,6 +1,5 @@
 import torch
-from torch.distributions import Normal, Uniform, Categorical
-from smc.distributions import TruncatedDiagonalMVN
+from torch.distributions import Uniform, Categorical
 
 class CellPrior(object):
     def __init__(self,
@@ -20,8 +19,7 @@ class CellPrior(object):
         self.min_fluor = min_fluor
         
         self.count_prior = Categorical((1/self.D) * torch.ones(self.D))
-        self.fluor_prior = TruncatedDiagonalMVN(600 * torch.ones(1), 200 * torch.ones(1),
-                                                self.min_fluor * torch.ones(1), 8 * self.min_fluor * torch.ones(1))
+        self.fluor_prior = Uniform(20, 255)
         self.axis_prior = Uniform(5*torch.ones(2), 10*torch.ones(2))
         self.angle_prior = Uniform(0, torch.pi)
         self.loc_prior = Uniform(torch.zeros(2) - self.pad*torch.ones(2),
@@ -82,7 +80,7 @@ class CellPrior(object):
 
         log_prior = self.count_prior.log_prob(counts)
         log_prior += (self.fluor_prior.log_prob(fluors +
-                                                self.fluor_prior.base_dist.mean * (fluors==0)) * count_indicator).sum(3)
+                                                self.fluor_prior.mean * (fluors==0)) * count_indicator).sum(3)
         log_prior += (self.loc_prior.log_prob(locs) * count_indicator.unsqueeze(4)).sum([3,4])
         if axes_angles == True:
             log_prior += (self.axis_prior.log_prob(axes +
