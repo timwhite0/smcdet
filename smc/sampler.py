@@ -387,6 +387,23 @@ class SMCsampler(object):
             raise ValueError("Sampler hasn't been run yet.")
         return self.image_total_fluor.mean()
     
+    @property
+    def reconstructed_image(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        argmax_index = self.weights_interblock.argmax()
+        ellipse = self.tile_attr.tileEllipse(self.tile_attr.img_height,
+                                             self.locs.shape[3], self.locs,
+                                             self.axes, self.angles)
+        
+        cell_intensities = (self.fluors.unsqueeze(3).unsqueeze(3) * ellipse).sum(5)
+        
+        total_intensities = gaussian_blur(cell_intensities,
+                                          kernel_size = self.tile_attr.psf_size,
+                                          sigma = self.tile_attr.psf_stdev) + self.tile_attr.background
+        total_intensities = total_intensities.permute((0, 1, 3, 4, 2))
+        
+        return total_intensities[:,:,:,:,argmax_index].squeeze()
     
     def summarize(self, display_images = True):
         if self.has_run == False:
@@ -396,3 +413,10 @@ class SMCsampler(object):
                 
         print(f"posterior mean count: {self.posterior_mean_count}")
         print(f"posterior mean total fluor: {self.posterior_mean_total_fluor}\n\n\n")
+        
+        if display_images == True:
+            fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
+            _ = original.imshow(self.img.cpu())
+            _ = original.set_title('original')
+            _ = reconstruction.imshow(self.reconstructed_image.cpu())
+            _ = reconstruction.set_title('reconstruction')
