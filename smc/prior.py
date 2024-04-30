@@ -19,7 +19,7 @@ class CellPrior(object):
         self.min_fluor = min_fluor
         
         self.count_prior = Categorical((1/self.D) * torch.ones(self.D))
-        self.fluor_prior = Uniform(20, 255)
+        self.fluor_prior = Uniform(self.min_fluor, 255)
         self.axis_prior = Uniform(5*torch.ones(2), 10*torch.ones(2))
         self.angle_prior = Uniform(0, torch.pi)
         self.loc_prior = Uniform(torch.zeros(2) - self.pad*torch.ones(2),
