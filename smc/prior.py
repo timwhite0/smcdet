@@ -1,70 +1,82 @@
 import torch
 from torch.distributions import Normal, Uniform, Categorical
 
-class CatalogPrior(object):
+class PointProcessPrior(object):
     def __init__(self,
                  max_objects: int,
-                 img_height: int,
-                 img_width: int,
-                 min_flux: float,
+                 img_dim: int,
                  pad = 0):
         
         self.max_objects = max_objects
-        self.D = self.max_objects + 1
+        self.num_counts = self.max_objects + 1
         
-        self.img_height = img_height
-        self.img_width = img_width
+        self.img_dim = img_dim
         self.pad = pad
         
-        self.min_flux = torch.tensor(min_flux)
-        
-        self.count_prior = Categorical((1/self.D) * torch.ones(self.D))
-        self.flux_prior = Normal(10 * self.min_flux, 2 * self.min_flux)
-        self.loc_prior = Uniform(torch.zeros(2) - self.pad*torch.ones(2),
-                                 torch.tensor((self.img_height, self.img_width)) + self.pad*torch.ones(2))
+        self.count_prior = Categorical((1 / self.num_counts) * torch.ones(self.num_counts))
+        self.loc_prior = Uniform((0 - self.pad) * torch.ones(2), (self.img_dim + self.pad) * torch.ones(2))
     
     def sample(self,
                num_catalogs = 1,
-               num_tiles_h = 1,
-               num_tiles_w = 1,
-               in_blocks = False,
-               num_blocks = None,
-               catalogs_per_block = None):
+               num_tiles_per_side = 1,
+               stratify_by_count = False,
+               num_catalogs_per_count = None):
+        if stratify_by_count is True and num_catalogs_per_count is None:
+            raise ValueError("If stratify_by_count is True, need to specify catalogs_per_count.")
+        elif stratify_by_count is False and num_catalogs_per_count is not None:
+            raise ValueError("If stratify_by_count is False, do not specify catalogs_per_count.")
         
-        if in_blocks is True and (num_blocks is None or catalogs_per_block is None):
-            raise ValueError("If in_blocks is True, need to specify num_blocks and catalogs_per_block.")
-        elif in_blocks is False and (num_blocks is not None or catalogs_per_block is not None):
-            raise ValueError("If in_blocks is False, do not specify num_blocks or catalogs_per_block.")
-        elif in_blocks is False:
-            dim = self.D
-            
-            counts = self.count_prior.sample([num_catalogs])
-            count_indicator = torch.arange(1, dim).unsqueeze(0) <= counts.unsqueeze(1)
-            
-            fluxes = self.flux_prior.sample([num_catalogs, self.max_objects]) * count_indicator
-            locs = self.loc_prior.sample([num_catalogs, self.max_objects]) * count_indicator.unsqueeze(2)
-        elif in_blocks is True:
-            dim = num_blocks
-            num_catalogs = num_blocks * catalogs_per_block
-            
-            counts = torch.ones(num_tiles_h, num_tiles_w, num_blocks * catalogs_per_block) * torch.arange(num_blocks).repeat_interleave(catalogs_per_block)
-            count_indicator = torch.arange(1, dim).unsqueeze(0) <= counts.unsqueeze(3)
-                   
-            fluxes = self.flux_prior.sample([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator
-            locs = self.loc_prior.sample([num_tiles_h, num_tiles_w, num_catalogs, self.max_objects]) * count_indicator.unsqueeze(4)
+        if stratify_by_count is False:
+            self.num = num_catalogs
+            counts = self.count_prior.sample([num_tiles_per_side, num_tiles_per_side, self.num])
+        elif stratify_by_count is True:
+            self.num = self.num_counts * num_catalogs_per_count
+            strata = torch.arange(self.num_counts).repeat_interleave(num_catalogs_per_count)
+            counts = strata * torch.ones(num_tiles_per_side, num_tiles_per_side, self.num)
         
-        return [counts, fluxes, locs]
+        self.count_indicator = torch.arange(1, self.num_counts).unsqueeze(0) <= counts.unsqueeze(3)
+        locs = self.loc_prior.sample([num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects])
+        locs *= self.count_indicator.unsqueeze(4)
+        
+        return [counts.squeeze([0,1]), locs.squeeze([0,1])]
     
-    # log_prob is defined for the in_blocks case within a SMCsampler
-    def log_prob(self,
-                 counts, fluxes, locs):
-
-        dim = fluxes.shape[3]
-        
-        count_indicator = 1 + torch.arange(dim).unsqueeze(0) <= counts.unsqueeze(3)
+    # we define log_prob for stratify_by_count = True, to be used within SMCsampler
+    def log_prob(self, counts, locs):
+        self.count_indicator = torch.arange(1, self.num_counts).unsqueeze(0) <= counts.unsqueeze(3)
 
         log_prior = self.count_prior.log_prob(counts)
-        log_prior += (self.flux_prior.log_prob(fluxes) * count_indicator).sum(3)
-        log_prior += (self.loc_prior.log_prob(locs) * count_indicator.unsqueeze(4)).sum([3,4])
+        log_prior += (self.loc_prior.log_prob(locs) * self.count_indicator.unsqueeze(4)).sum([3,4])
         
         return log_prior
+
+
+# TODO: Move all subclasses of PointProcessPrior to their own case_studies directory
+class StarPrior(PointProcessPrior):
+    def __init__(self,
+                 *args,
+                 min_flux: float,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.min_flux = min_flux
+        self.feature_prior = Normal(10 * self.min_flux, 2 * self.min_flux)
+    
+    def sample(self,
+               num_catalogs = 1,
+               num_tiles_per_side = 1,
+               stratify_by_count = False,
+               num_catalogs_per_count = None):
+        counts, locs = super().sample(num_catalogs, num_tiles_per_side,
+                                      stratify_by_count, num_catalogs_per_count)
+        
+        features = self.feature_prior.sample([num_tiles_per_side, num_tiles_per_side,
+                                              self.num, self.max_objects])
+        features *= self.count_indicator
+        
+        return [counts, locs, features.squeeze([0,1])]
+    
+    # we define log_prob for stratify_by_count = True, to be used within SMCsampler
+    def log_prob(self, counts, locs, features):
+        log_prior = super().log_prob(counts, locs)
+        
+        return log_prior + (self.feature_prior.log_prob(features) * self.count_indicator).sum(3)
