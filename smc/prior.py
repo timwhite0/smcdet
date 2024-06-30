@@ -50,7 +50,7 @@ class PointProcessPrior(object):
         return log_prior
 
 
-# TODO: Move all subclasses of PointProcessPrior to their own case_studies directory
+# TODO: Move each subclass of PointProcessPrior to its own case_studies directory
 class StarPrior(PointProcessPrior):
     def __init__(self,
                  *args,
