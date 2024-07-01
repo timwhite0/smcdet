@@ -4,18 +4,17 @@ from scipy.optimize import brentq
 class SMCsampler(object):
     def __init__(self,
                  image,
-                 num_tiles_per_side,
+                 tile_dim,
                  Prior,
                  ImageModel,
                  MutationKernel,
-                 max_objects,
-                 num_catalogs,
+                 num_catalogs_per_count,
                  max_smc_iters):
         self.image = image
         self.image_dim = image.shape[0]
         
-        self.num_tiles_per_side = num_tiles_per_side
-        self.tile_dim = self.image_dim // self.num_tiles_per_side
+        self.tile_dim = tile_dim
+        self.num_tiles_per_side = self.image_dim  // self.tile_dim
         self.tiled_image = image.unfold(0,
                                         self.tile_dim,
                                         self.tile_dim).unfold(1,
@@ -25,13 +24,13 @@ class SMCsampler(object):
         self.Prior = Prior
         self.ImageModel = ImageModel
         self.MutationKernel = MutationKernel
-        self.MutationKernel.locs_lower = 0 - self.Prior.pad
-        self.MutationKernel.locs_upper = self.tile_dim + self.Prior.pad
+        self.MutationKernel.locs_lower = torch.tensor(0 - self.Prior.pad)
+        self.MutationKernel.locs_upper = torch.tensor(self.tile_dim + self.Prior.pad)
         
-        self.max_objects = max_objects
+        self.max_objects = self.Prior.max_objects
         self.num_counts = self.max_objects + 1  # num_counts = |{0,1,2,...,max_objects}|
-        self.num_catalogs = num_catalogs
-        self.num_catalogs_per_count = self.num_catalogs // self.num_counts
+        self.num_catalogs_per_count = num_catalogs_per_count
+        self.num_catalogs = self.num_counts * self.num_catalogs_per_count
         
         self.max_smc_iters = max_smc_iters
         
@@ -81,7 +80,7 @@ class SMCsampler(object):
 
 
     def temper(self):
-        self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.fluxes)
+        self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.features)
         
         solutions = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
         
@@ -151,7 +150,8 @@ class SMCsampler(object):
     def run(self, print_progress = True):
         self.iter = 0
         
-        print("Starting the tile samplers...")
+        if print_progress is True:
+            print("Starting the tile samplers...")
         
         self.temper()
         self.update_weights()
@@ -159,7 +159,7 @@ class SMCsampler(object):
         while self.temperature < 1 and self.iter <= self.max_smc_iters:
             self.iter += 1
             
-            if print_progress == True and self.iter % 5 == 0:
+            if print_progress is True and self.iter % 5 == 0:
                 print(f"iteration {self.iter}, temperature = {self.temperature.item()}")
             
             self.resample()
@@ -169,45 +169,46 @@ class SMCsampler(object):
         
         self.has_run = True
         
-        print("Done!\n")
+        if print_progress is True:
+            print("Done!\n")
     
     
-    @property
-    def image_counts(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
+    # @property
+    # def image_counts(self):
+    #     if self.has_run == False:
+    #         raise ValueError("Sampler hasn't been run yet.")
         
-        if self.product_form == True:
-            image_counts = self.counts.sum([0,1])
-        elif self.product_form == False:
-            image_counts = (self.counts.squeeze() * self.weights_intercount).sum()
-        return image_counts
+    #     if self.product_form == True:
+    #         image_counts = self.counts.sum([0,1])
+    #     elif self.product_form == False:
+    #         image_counts = (self.counts.squeeze() * self.weights_intercount).sum()
+    #     return image_counts
     
     
-    @property
-    def image_total_flux(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
+    # @property
+    # def image_total_flux(self):
+    #     if self.has_run == False:
+    #         raise ValueError("Sampler hasn't been run yet.")
         
-        if self.product_form == True:
-            image_total_flux = self.fluxes.sum([0,1,3])
-        elif self.product_form == False:
-            image_total_flux = (self.fluxes.squeeze().sum(1) * self.weights_intercount).sum()
-        return image_total_flux
+    #     if self.product_form == True:
+    #         image_total_flux = self.fluxes.sum([0,1,3])
+    #     elif self.product_form == False:
+    #         image_total_flux = (self.fluxes.squeeze().sum(1) * self.weights_intercount).sum()
+    #     return image_total_flux
     
     
-    @property
-    def posterior_mean_count(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
-        return self.image_counts.mean()
+    # @property
+    # def posterior_mean_count(self):
+    #     if self.has_run == False:
+    #         raise ValueError("Sampler hasn't been run yet.")
+    #     return self.image_counts.mean()
     
     
-    @property
-    def posterior_mean_total_flux(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
-        return self.image_total_flux.mean()
+    # @property
+    # def posterior_mean_total_flux(self):
+    #     if self.has_run == False:
+    #         raise ValueError("Sampler hasn't been run yet.")
+    #     return self.image_total_flux.mean()
     
     
     def summarize(self, display_images = True):
@@ -216,8 +217,8 @@ class SMCsampler(object):
         
         print(f"summary\nnumber of SMC iterations: {self.iter}")
         
-        print(f"posterior mean count: {self.posterior_mean_count}")
-        print(f"posterior mean total flux: {self.posterior_mean_total_flux}\n\n\n")
+        # print(f"posterior mean count: {self.posterior_mean_count}")
+        # print(f"posterior mean total flux: {self.posterior_mean_total_flux}\n\n\n")
         
         # if display_images == True:
         #     fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)

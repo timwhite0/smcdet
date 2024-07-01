@@ -5,20 +5,18 @@ from smc.distributions import TruncatedDiagonalMVN
 class MetropolisHastings(object):
     def __init__(self,
                  num_iters,
-                 locs_lower,
-                 locs_upper,
                  locs_stdev,
                  features_stdev):
         self.num_iters = num_iters
         
-        self.locs_lower = torch.tensor(locs_lower)
-        self.locs_upper = torch.tensor(locs_upper)
+        self.locs_lower = None  # defined automatically within SMCsampler
+        self.locs_upper = None  # defined automatically within SMCsampler
         self.locs_stdev = torch.tensor(locs_stdev)
         
         self.features_stdev = features_stdev * torch.ones(1)
     
     def run(self, counts, locs, features, temperature, log_target):
-        count_indicator = torch.arange(1, counts.max().item()).unsqueeze(0) <= self.counts.unsqueeze(3)
+        count_indicator = torch.arange(1, counts.max().item() + 1).unsqueeze(0) <= counts.unsqueeze(3)
         
         locs_prev = locs
         features_prev = features

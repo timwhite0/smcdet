@@ -3,8 +3,8 @@ from torch.distributions import Normal, Uniform, Categorical
 
 class PointProcessPrior(object):
     def __init__(self,
-                 max_objects: int,
-                 image_dim: int,
+                 max_objects,
+                 image_dim,
                  pad = 0):
         
         self.max_objects = max_objects
@@ -38,7 +38,7 @@ class PointProcessPrior(object):
         locs = self.loc_prior.sample([num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects])
         locs *= self.count_indicator.unsqueeze(4)
         
-        return [counts.squeeze([0,1]), locs.squeeze([0,1])]
+        return [counts, locs]
     
     # we define log_prob for stratify_by_count = True, to be used within SMCsampler
     def log_prob(self, counts, locs):
@@ -73,7 +73,7 @@ class StarPrior(PointProcessPrior):
                                               self.num, self.max_objects])
         features *= self.count_indicator
         
-        return [counts, locs, features.squeeze([0,1])]
+        return [counts, locs, features]
     
     # we define log_prob for stratify_by_count = True, to be used within SMCsampler
     def log_prob(self, counts, locs, features):

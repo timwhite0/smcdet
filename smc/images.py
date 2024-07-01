@@ -26,9 +26,13 @@ class ImageModel(object):
         return psf
     
     
-    def generate(self, prior, num = 1):
-        catalogs = prior.sample(num_catalogs = num)
+    def generate(self, Prior, num_images = 1):
+        catalogs = Prior.sample(num_catalogs = num_images)
         counts, locs, features = catalogs
+        
+        counts = counts.squeeze([0,1])
+        locs = locs.squeeze([0,1])
+        features = features.squeeze([0,1])
         
         psf = self.psf(locs)
         rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(3) + self.background
