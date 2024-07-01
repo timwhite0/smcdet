@@ -147,6 +147,45 @@ class SMCsampler(object):
         self.ESS = 1/(self.weights_intracount ** 2).sum(3)
 
 
+    def resample_intercount(self):
+        num = 5 * self.num_catalogs
+        weights_intercount_flat = self.weights_intercount.flatten(0,1)
+        resampled_index_flat = weights_intercount_flat.multinomial(num, replacement = True)
+        resampled_index = resampled_index_flat.unflatten(0, (self.num_tiles_per_side, self.num_tiles_per_side))
+        resampled_index = resampled_index.clamp(min = 0, max = num - 1)
+        
+        counts = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, num)
+        locs = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, num, self.max_objects, 2)
+        features = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, num, self.max_objects)
+        weights = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, num)
+        
+        for h in range(self.num_tiles_per_side):
+            for w in range(self.num_tiles_per_side):
+                counts[h,w,:] = self.counts[h,w,resampled_index[h,w,:]]
+                locs[h,w,:] = self.locs[h,w,resampled_index[h,w,:]]
+                features[h,w,:] = self.features[h,w,resampled_index[h,w,:]]
+                weights[h,w,:] = 1 / num
+        
+        self.counts = counts
+        self.locs = locs
+        self.features = features
+        self.weights_intercount = weights
+    
+    def prune(self):
+        in_bounds = torch.all(torch.logical_and(self.locs > 0, self.locs < self.tile_dim), dim = 4)
+        self.counts = in_bounds.sum(3)
+        self.locs = in_bounds.unsqueeze(4) * self.locs
+        self.features = in_bounds * self.features
+        
+        features_mask = (self.features != 0).int()
+        features_index = torch.sort(features_mask, dim = 3, descending = True)[1]
+        self.features = torch.gather(self.features, dim = 3, index = features_index)
+        
+        locs_mask = (self.locs != 0).int()
+        locs_index = torch.sort(locs_mask, dim = 3, descending = True)[1]
+        self.locs = torch.gather(self.locs, dim = 3, index = locs_index)
+        
+        
     def run(self, print_progress = True):
         self.iter = 0
         
@@ -166,6 +205,9 @@ class SMCsampler(object):
             self.mutate()
             self.temper()
             self.update_weights()
+        
+        self.resample_intercount()
+        self.prune()
         
         self.has_run = True
         
