@@ -1,38 +1,35 @@
 import torch
-from torch.distributions import Poisson, Normal, Uniform
-from smc.distributions import TruncatedDiagonalMVN
-import matplotlib.pyplot as plt
 from scipy.optimize import brentq
 
 class SMCsampler(object):
     def __init__(self,
-                 img,
+                 image,
                  num_tiles_per_side,
                  Prior,
-                 loglikelihood,
+                 ImageModel,
                  MutationKernel,
                  max_objects,
                  num_catalogs,
                  max_smc_iters):
-        self.img = img
-        self.img_dim = img.shape[0]
+        self.image = image
+        self.image_dim = image.shape[0]
         
         self.num_tiles_per_side = num_tiles_per_side
-        self.tile_dim = self.img_dim // self.num_tiles_per_side
-        self.tiles = img.unfold(0,
-                                self.tile_dim,
-                                self.tile_dim).unfold(1,
-                                                      self.tile_dim,
-                                                      self.tile_dim)
+        self.tile_dim = self.image_dim // self.num_tiles_per_side
+        self.tiled_image = image.unfold(0,
+                                        self.tile_dim,
+                                        self.tile_dim).unfold(1,
+                                                            self.tile_dim,
+                                                            self.tile_dim)
         
         self.Prior = Prior
-        self.loglikelihood = loglikelihood
+        self.ImageModel = ImageModel
         self.MutationKernel = MutationKernel
         self.MutationKernel.locs_lower = 0 - self.Prior.pad
         self.MutationKernel.locs_upper = self.tile_dim + self.Prior.pad
         
         self.max_objects = max_objects
-        self.num_counts = self.max_objects + 1  # num_counts = {0,1,2,...,max_objects}
+        self.num_counts = self.max_objects + 1  # num_counts = |{0,1,2,...,max_objects}|
         self.num_catalogs = num_catalogs
         self.num_catalogs_per_count = self.num_catalogs // self.num_counts
         
@@ -49,7 +46,7 @@ class SMCsampler(object):
         self.temperature = torch.zeros(1)
         
         # cache loglikelihood for tempering step
-        self.loglik = self.loglikelihood(self.counts, self.locs, self.features)
+        self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.features)
         
         # initialize weights
         self.weights_log_unnorm = torch.zeros(self.num_tiles_per_side,
@@ -71,25 +68,25 @@ class SMCsampler(object):
 
     def log_target(self, counts, locs, features, temperature):
         logprior = self.Prior.log_prob(counts, locs, features)
-        loglik = self.loglikelihood(counts, locs, features)
+        loglik = self.ImageModel.loglikelihood(self.tiled_image, locs, features)
         
         return logprior + temperature * loglik
 
 
-    def tempering_objective(self, log_likelihood, delta):
-        log_numerator = 2 * ((delta * log_likelihood).logsumexp(0))
-        log_denominator = (2 * delta * log_likelihood).logsumexp(0)
+    def tempering_objective(self, loglikelihood, delta):
+        log_numerator = 2 * ((delta * loglikelihood).logsumexp(0))
+        log_denominator = (2 * delta * loglikelihood).logsumexp(0)
 
         return (log_numerator - log_denominator).exp() - self.ESS_threshold_tempering
 
 
     def temper(self):
-        self.loglik = self.tempered_log_likelihood(self.locs, self.fluxes, 1)
+        self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.fluxes)
         
-        solutions = torch.zeros(self.num_tiles_h, self.num_tiles_w)
+        solutions = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
         
-        for h in range(self.num_tiles_h):
-            for w in range(self.num_tiles_w):
+        for h in range(self.num_tiles_per_side):
+            for w in range(self.num_tiles_per_side):
                 def func(delta):
                     return self.tempering_objective(self.loglik[h,w], delta)
                 
@@ -106,23 +103,25 @@ class SMCsampler(object):
     
     
     def resample(self):
-        for block_num in range(self.num_blocks):
-            resampled_index = self.weights_intracount[:,:,block_num,:].flatten(0,1).multinomial(self.catalogs_per_block,
-                                                                                                replacement = True).unflatten(0, (self.num_tiles_h, self.num_tiles_w))
-            resampled_index = resampled_index.clamp(min = 0, max = self.catalogs_per_block - 1)
+        for count_num in range(self.num_counts):
+            weights_intracount_flat = self.weights_intracount[:,:,count_num,:].flatten(0,1)
+            resampled_index_flat = weights_intracount_flat.multinomial(self.num_catalogs_per_count, replacement = True)
+            resampled_index = resampled_index_flat.unflatten(0, (self.num_tiles_per_side, self.num_tiles_per_side))
+            resampled_index = resampled_index.clamp(min = 0, max = self.num_catalogs_per_count - 1)
             
-            lower = block_num*self.catalogs_per_block
-            upper = (block_num+1)*self.catalogs_per_block
+            lower = count_num * self.num_catalogs_per_count
+            upper = (count_num + 1) * self.num_catalogs_per_count
             
-            for h in range(self.num_tiles_h):
-                for w in range(self.num_tiles_w):
+            for h in range(self.num_tiles_per_side):
+                for w in range(self.num_tiles_per_side):
                     l = self.locs[h,w,lower:upper,:,:]
-                    f = self.fluxes[h,w,lower:upper,:]
+                    f = self.features[h,w,lower:upper,:]
                     self.locs[h,w,lower:upper,:,:] = l[resampled_index[h,w,:],:,:]
-                    self.fluxes[h,w,lower:upper,:] = f[resampled_index[h,w,:],:]
+                    self.features[h,w,lower:upper,:] = f[resampled_index[h,w,:],:]
                     
-            self.weights_intracount[:,:,block_num,:] = (1/self.catalogs_per_block) * torch.ones(self.num_tiles_h, self.num_tiles_w, self.catalogs_per_block)
-            self.weights_intercount[:,:,lower:upper] = (self.weights_intercount[:,:,lower:upper].sum(2)/self.catalogs_per_block).unsqueeze(2).repeat(1, 1, self.catalogs_per_block)
+            self.weights_intracount[:,:,count_num,:] = 1/self.num_catalogs_per_count
+            tmp_weights_intercount = (self.weights_intercount[:,:,lower:upper].sum(2) / self.num_catalogs_per_count)
+            self.weights_intercount[:,:,lower:upper] = tmp_weights_intercount.unsqueeze(2).repeat(1, 1, self.num_catalogs_per_count)
     
     
     def mutate(self):
@@ -136,7 +135,9 @@ class SMCsampler(object):
         self.weights_log_unnorm = self.weights_intercount.log() + weights_log_incremental
         self.weights_log_unnorm = torch.nan_to_num(self.weights_log_unnorm, -torch.inf)
         
-        self.weights_intracount = torch.stack(torch.split(self.weights_log_unnorm, self.catalogs_per_block, dim=2), dim=2).softmax(3)
+        self.weights_intracount = torch.stack(torch.split(self.weights_log_unnorm,
+                                                          self.num_catalogs_per_count,
+                                                          dim = 2), dim = 2).softmax(3)
         self.weights_intercount = self.weights_log_unnorm.softmax(2)
         
         m = self.weights_log_unnorm.max(2).values
@@ -144,7 +145,7 @@ class SMCsampler(object):
         s = w.sum(2)
         self.log_normalizing_constant = self.log_normalizing_constant + m + (s/self.num_catalogs).log()
         
-        self.ESS = 1/(self.weights_intracount**2).sum(3)
+        self.ESS = 1/(self.weights_intracount ** 2).sum(3)
 
 
     def run(self, print_progress = True):
@@ -220,7 +221,7 @@ class SMCsampler(object):
         
         # if display_images == True:
         #     fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
-        #     _ = original.imshow(self.img.cpu(), origin='lower')
+        #     _ = original.imshow(self.image.cpu(), origin='lower')
         #     _ = original.set_title('original')
         #     _ = reconstruction.imshow(self.reconstructed_image.cpu(), origin='lower')
         #     _ = reconstruction.set_title('reconstruction')

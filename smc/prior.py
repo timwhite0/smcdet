@@ -4,17 +4,17 @@ from torch.distributions import Normal, Uniform, Categorical
 class PointProcessPrior(object):
     def __init__(self,
                  max_objects: int,
-                 img_dim: int,
+                 image_dim: int,
                  pad = 0):
         
         self.max_objects = max_objects
         self.num_counts = self.max_objects + 1
         
-        self.img_dim = img_dim
+        self.image_dim = image_dim
         self.pad = pad
         
         self.count_prior = Categorical((1 / self.num_counts) * torch.ones(self.num_counts))
-        self.loc_prior = Uniform((0 - self.pad) * torch.ones(2), (self.img_dim + self.pad) * torch.ones(2))
+        self.loc_prior = Uniform((0 - self.pad) * torch.ones(2), (self.image_dim + self.pad) * torch.ones(2))
     
     def sample(self,
                num_catalogs = 1,
