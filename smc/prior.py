@@ -4,17 +4,21 @@ from torch.distributions import Normal, Uniform, Categorical
 class PointProcessPrior(object):
     def __init__(self,
                  max_objects,
-                 image_dim,
+                 image_height,
+                 image_width,
                  pad = 0):
         
         self.max_objects = max_objects
         self.num_counts = self.max_objects + 1
         
-        self.image_dim = image_dim
+        self.image_height = image_height
+        self.image_width = image_width
         self.pad = pad
         
         self.count_prior = Categorical((1 / self.num_counts) * torch.ones(self.num_counts))
-        self.loc_prior = Uniform((0 - self.pad) * torch.ones(2), (self.image_dim + self.pad) * torch.ones(2))
+        self.loc_prior = Uniform((0 - self.pad) * torch.ones(2),
+                                 torch.tensor((self.image_height + self.pad,
+                                               self.image_width + self.pad)))
     
     def sample(self,
                num_catalogs = 1,
@@ -42,10 +46,10 @@ class PointProcessPrior(object):
     
     # we define log_prob for stratify_by_count = True, to be used within SMCsampler
     def log_prob(self, counts, locs):
-        self.count_indicator = torch.arange(1, self.num_counts).unsqueeze(0) <= counts.unsqueeze(3)
+        self.count_indicator = torch.arange(1, self.num_counts).unsqueeze(0) <= counts.unsqueeze(-1)
 
         log_prior = self.count_prior.log_prob(counts)
-        log_prior += (self.loc_prior.log_prob(locs) * self.count_indicator.unsqueeze(4)).sum([3,4])
+        log_prior += (self.loc_prior.log_prob(locs) * self.count_indicator.unsqueeze(-1)).sum([-1,-2])
         
         return log_prior
 
@@ -79,4 +83,4 @@ class StarPrior(PointProcessPrior):
     def log_prob(self, counts, locs, features):
         log_prior = super().log_prob(counts, locs)
         
-        return log_prior + (self.feature_prior.log_prob(features) * self.count_indicator).sum(3)
+        return log_prior + (self.feature_prior.log_prob(features) * self.count_indicator).sum(-1)

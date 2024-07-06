@@ -1,16 +1,20 @@
 import torch
 from torch.distributions import Poisson
+from einops import rearrange
 
 class ImageModel(object):
     def __init__(self,
-                 image_dim,
+                 image_height,
+                 image_width,
                  psf_stdev,
                  background):
-        self.image_dim = image_dim
+        self.image_height = image_height
+        self.image_width = image_width
         
-        psf_marginal = 1 + torch.arange(self.image_dim, dtype = torch.float32)
-        self.psf_marginal_h = psf_marginal.view(1, self.image_dim, 1, 1)
-        self.psf_marginal_w = psf_marginal.view(1, 1, self.image_dim, 1)
+        marginal_h = 1 + torch.arange(self.image_height, dtype = torch.float32)
+        marginal_w = 1 + torch.arange(self.image_width, dtype = torch.float32)
+        self.psf_marginal_h = marginal_h.view(1, self.image_height, 1, 1)
+        self.psf_marginal_w = marginal_w.view(1, 1, self.image_width, 1)
         
         self.psf_stdev = psf_stdev
         
@@ -35,17 +39,16 @@ class ImageModel(object):
         features = features.squeeze([0,1])
         
         psf = self.psf(locs)
-        rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(3) + self.background
+        rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(-1) + self.background
         images = Poisson(rate).sample()
         
         return [counts, locs, features, images]
 
 
-    # first two dims of tiled_image should be num_tiles_per_side x num_tiles_per_side
     def loglikelihood(self, tiled_image, locs, features):
         psf = self.psf(locs)
-        rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(5) + self.background
-        rate = rate.permute((0, 1, 3, 4, 2))
-        loglik = Poisson(rate).log_prob(tiled_image.unsqueeze(4)).sum([2,3])
+        rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(-1) + self.background
+        rate = rearrange(rate, '... n h w -> ... h w n')
+        loglik = Poisson(rate).log_prob(tiled_image.unsqueeze(-1)).sum([-2,-3])
 
         return loglik

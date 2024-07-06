@@ -18,8 +18,8 @@ class SMCsampler(object):
         self.tiled_image = image.unfold(0,
                                         self.tile_dim,
                                         self.tile_dim).unfold(1,
-                                                            self.tile_dim,
-                                                            self.tile_dim)
+                                                              self.tile_dim,
+                                                              self.tile_dim)
         
         self.Prior = Prior
         self.ImageModel = ImageModel
@@ -148,28 +148,18 @@ class SMCsampler(object):
 
 
     def resample_intercount(self):
-        num = 5 * self.num_catalogs
         weights_intercount_flat = self.weights_intercount.flatten(0,1)
-        resampled_index_flat = weights_intercount_flat.multinomial(num, replacement = True)
+        resampled_index_flat = weights_intercount_flat.multinomial(self.num_catalogs, replacement = True)
         resampled_index = resampled_index_flat.unflatten(0, (self.num_tiles_per_side, self.num_tiles_per_side))
-        resampled_index = resampled_index.clamp(min = 0, max = num - 1)
-        
-        counts = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, num)
-        locs = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, num, self.max_objects, 2)
-        features = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, num, self.max_objects)
-        weights = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, num)
+        resampled_index = resampled_index.clamp(min = 0, max = self.num_catalogs - 1)
         
         for h in range(self.num_tiles_per_side):
             for w in range(self.num_tiles_per_side):
-                counts[h,w,:] = self.counts[h,w,resampled_index[h,w,:]]
-                locs[h,w,:] = self.locs[h,w,resampled_index[h,w,:]]
-                features[h,w,:] = self.features[h,w,resampled_index[h,w,:]]
-                weights[h,w,:] = 1 / num
+                self.counts[h,w,:] = self.counts[h,w,resampled_index[h,w,:]]
+                self.locs[h,w,:] = self.locs[h,w,resampled_index[h,w,:]]
+                self.features[h,w,:] = self.features[h,w,resampled_index[h,w,:]]
+                self.weights_intercount[h,w,:] = 1 / self.num_catalogs
         
-        self.counts = counts
-        self.locs = locs
-        self.features = features
-        self.weights_intercount = weights
     
     def prune(self):
         in_bounds = torch.all(torch.logical_and(self.locs > 0, self.locs < self.tile_dim), dim = 4)
@@ -215,56 +205,16 @@ class SMCsampler(object):
             print("Done!\n")
     
     
-    # @property
-    # def image_counts(self):
-    #     if self.has_run == False:
-    #         raise ValueError("Sampler hasn't been run yet.")
-        
-    #     if self.product_form == True:
-    #         image_counts = self.counts.sum([0,1])
-    #     elif self.product_form == False:
-    #         image_counts = (self.counts.squeeze() * self.weights_intercount).sum()
-    #     return image_counts
+    @property
+    def posterior_mean_counts(self):
+        if self.has_run == False:
+            raise ValueError("Sampler hasn't been run yet.")
+        return self.counts.float().mean(2).round(decimals = 2)
     
     
-    # @property
-    # def image_total_flux(self):
-    #     if self.has_run == False:
-    #         raise ValueError("Sampler hasn't been run yet.")
-        
-    #     if self.product_form == True:
-    #         image_total_flux = self.fluxes.sum([0,1,3])
-    #     elif self.product_form == False:
-    #         image_total_flux = (self.fluxes.squeeze().sum(1) * self.weights_intercount).sum()
-    #     return image_total_flux
-    
-    
-    # @property
-    # def posterior_mean_count(self):
-    #     if self.has_run == False:
-    #         raise ValueError("Sampler hasn't been run yet.")
-    #     return self.image_counts.mean()
-    
-    
-    # @property
-    # def posterior_mean_total_flux(self):
-    #     if self.has_run == False:
-    #         raise ValueError("Sampler hasn't been run yet.")
-    #     return self.image_total_flux.mean()
-    
-    
-    def summarize(self, display_images = True):
+    def summarize(self):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
         
         print(f"summary\nnumber of SMC iterations: {self.iter}")
-        
-        # print(f"posterior mean count: {self.posterior_mean_count}")
-        # print(f"posterior mean total flux: {self.posterior_mean_total_flux}\n\n\n")
-        
-        # if display_images == True:
-        #     fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
-        #     _ = original.imshow(self.image.cpu(), origin='lower')
-        #     _ = original.set_title('original')
-        #     _ = reconstruction.imshow(self.reconstructed_image.cpu(), origin='lower')
-        #     _ = reconstruction.set_title('reconstruction')
+        print(f"posterior mean count by tile:\n{self.posterior_mean_counts}")
