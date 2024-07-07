@@ -7,14 +7,14 @@ class PointProcessPrior(object):
                  image_height,
                  image_width,
                  pad = 0):
-        
         self.max_objects = max_objects
-        self.num_counts = self.max_objects + 1
-        
         self.image_height = image_height
         self.image_width = image_width
         self.pad = pad
-        
+        self.update_attrs()
+    
+    def update_attrs(self):
+        self.num_counts = self.max_objects + 1    
         self.count_prior = Categorical((1 / self.num_counts) * torch.ones(self.num_counts))
         self.loc_prior = Uniform((0 - self.pad) * torch.ones(2),
                                  torch.tensor((self.image_height + self.pad,
@@ -61,7 +61,6 @@ class StarPrior(PointProcessPrior):
                  min_flux: float,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        
         self.min_flux = min_flux
         self.feature_prior = Normal(10 * self.min_flux, 2 * self.min_flux)
     
