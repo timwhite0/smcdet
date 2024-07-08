@@ -47,11 +47,9 @@ class ImageModel(object):
 
 
     def loglikelihood(self, tiled_image, locs, features):
-        print(features.min())
         psf = self.psf(locs)
         rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(-1) + self.background
         rate = rearrange(rate, '... n h w -> ... h w n')
-        print(rate.min())
         loglik = Poisson(rate).log_prob(tiled_image.unsqueeze(-1)).sum([-2,-3])
 
         return loglik

@@ -24,8 +24,10 @@ class SMCsampler(object):
         self.Prior = Prior
         self.ImageModel = ImageModel
         self.MutationKernel = MutationKernel
-        self.MutationKernel.locs_lower = torch.tensor(0 - self.Prior.pad)
-        self.MutationKernel.locs_upper = torch.tensor(self.tile_dim + self.Prior.pad)
+        self.MutationKernel.locs_lower = 0 - self.Prior.pad
+        self.MutationKernel.locs_upper = self.tile_dim + self.Prior.pad
+        self.MutationKernel.features_lower = torch.zeros(1)
+        self.MutationKernel.features_upper = torch.inf
         
         self.max_objects = self.Prior.max_objects
         self.num_counts = self.max_objects + 1  # num_counts = |{0,1,2,...,max_objects}|
