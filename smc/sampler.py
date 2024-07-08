@@ -1,113 +1,99 @@
 import torch
-from torch.distributions import Poisson, Normal, Uniform
-from smc.distributions import TruncatedDiagonalMVN
-from smc.images import ImageAttributes
-import matplotlib.pyplot as plt
 from scipy.optimize import brentq
 
 class SMCsampler(object):
     def __init__(self,
-                 img,
-                 img_attr,
-                 tile_side_length,
-                 prior,
-                 max_objects,
-                 catalogs_per_block,
-                 kernel_num_iters,
-                 product_form_multiplier,
+                 image,
+                 tile_dim,
+                 Prior,
+                 ImageModel,
+                 MutationKernel,
+                 num_catalogs_per_count,
                  max_smc_iters):
-        self.img = img
-        self.img_attr = img_attr
+        self.image = image
+        self.image_dim = image.shape[0]
         
-        self.prior = prior
+        self.tile_dim = tile_dim
+        self.num_tiles_per_side = self.image_dim  // self.tile_dim
+        self.tiled_image = image.unfold(0,
+                                        self.tile_dim,
+                                        self.tile_dim).unfold(1,
+                                                              self.tile_dim,
+                                                              self.tile_dim)
         
-        self.num_blocks = max_objects + 1
-        self.catalogs_per_block = catalogs_per_block
-        self.num_catalogs = self.num_blocks * self.catalogs_per_block
+        self.Prior = Prior
+        self.ImageModel = ImageModel
+        self.MutationKernel = MutationKernel
+        self.MutationKernel.locs_lower = 0 - self.Prior.pad
+        self.MutationKernel.locs_upper = self.tile_dim + self.Prior.pad
+        self.MutationKernel.features_lower = torch.zeros(1)
+        self.MutationKernel.features_upper = torch.inf
+        
+        self.max_objects = self.Prior.max_objects
+        self.num_counts = self.max_objects + 1  # num_counts = |{0,1,2,...,max_objects}|
+        self.num_catalogs_per_count = num_catalogs_per_count
+        self.num_catalogs = self.num_counts * self.num_catalogs_per_count
         
         self.max_smc_iters = max_smc_iters
         
-        self.kernel_num_iters = kernel_num_iters
-        self.kernel_fluxes_stdev = 0.1*self.prior.flux_prior.stddev
-        self.kernel_locs_stdev = 0.05*self.prior.loc_prior.stddev.unique()
+        # initialize catalogs
+        cats = self.Prior.sample(num_tiles_per_side = self.num_tiles_per_side,
+                                 stratify_by_count = True,
+                                 num_catalogs_per_count = self.num_catalogs_per_count)
+        self.counts, self.locs, self.features = cats
         
-        self.tile_side_length = tile_side_length
-        self.num_tiles_h = self.img_attr.img_height//tile_side_length
-        self.num_tiles_w = self.img_attr.img_width//tile_side_length
-        self.tiles = img.unfold(0,
-                                self.tile_side_length,
-                                self.tile_side_length).unfold(1,
-                                                              self.tile_side_length,
-                                                              self.tile_side_length)
-        self.tile_attr = ImageAttributes(self.tile_side_length,
-                                         self.tile_side_length,
-                                         self.prior.max_objects,
-                                         self.img_attr.psf_stdev,
-                                         self.img_attr.background_intensity)
-        
-        if self.num_tiles_h == 1 and self.num_tiles_w == 1:
-            self.product_form = False
-        else:
-            self.product_form = True
-        
-        self.product_form_multiplier = product_form_multiplier
-        
-        self.counts, self.fluxes, self.locs = self.prior.sample(num_tiles_h = self.num_tiles_h,
-                                                                num_tiles_w = self.num_tiles_w,
-                                                                in_blocks = True,
-                                                                num_blocks = self.num_blocks,
-                                                                catalogs_per_block = self.catalogs_per_block)
-        
+        # initialize temperature
         self.temperature_prev = torch.zeros(1)
         self.temperature = torch.zeros(1)
         
-        self.loglik = self.tempered_log_likelihood(self.fluxes, self.locs, 1) # for caching in tempering step before weight update
+        # cache loglikelihood for tempering step
+        self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.features)
         
-        self.weights_log_unnorm = torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_catalogs)
-        self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm,
-                                                          self.catalogs_per_block, dim=2), dim=2).softmax(3)
-        self.weights_interblock = self.weights_log_unnorm.softmax(2)
+        # initialize weights
+        self.weights_log_unnorm = torch.zeros(self.num_tiles_per_side,
+                                              self.num_tiles_per_side,
+                                              self.num_catalogs)
+        self.weights_intracount = torch.stack(torch.split(self.weights_log_unnorm,
+                                                          self.num_catalogs_per_count,
+                                                          dim = 2), dim = 2).softmax(3)
+        self.weights_intercount = self.weights_log_unnorm.softmax(2)
         self.log_normalizing_constant = (self.weights_log_unnorm.exp().mean(2)).log()
         
-        self.ESS_threshold_resampling = 0.5 * catalogs_per_block
-        self.ESS_threshold_tempering = 0.5 * catalogs_per_block
-        self.ESS = 1/(self.weights_intrablock**2).sum(3)
+        # set ESS thresholds
+        self.ESS = 1 / (self.weights_intracount ** 2).sum(3)
+        self.ESS_threshold_resampling = 0.5 * self.num_catalogs_per_count
+        self.ESS_threshold_tempering = 0.5 * self.num_catalogs_per_count
         
         self.has_run = False
-        
-    def tempered_log_likelihood(self, fluxes, locs, temperature):
-        psf = self.tile_attr.tilePSF(locs.shape[3], locs[:,:,:,:,0], locs[:,:,:,:,1])
-        
-        rate = (psf * fluxes.unsqueeze(3).unsqueeze(3)).sum(5) + self.img_attr.background_intensity
-        rate = rate.permute((0, 1, 3, 4, 2))
-        
-        loglik = Poisson(rate).log_prob(self.tiles.unsqueeze(4)).sum([2, 3])
-        tempered_loglik = temperature * loglik
 
-        return tempered_loglik
 
-    def log_target(self, counts, fluxes, locs, temperature):
-        return self.prior.log_prob(counts, fluxes, locs) + self.tempered_log_likelihood(fluxes, locs, temperature)
+    def log_target(self, counts, locs, features, temperature):
+        logprior = self.Prior.log_prob(counts, locs, features)
+        loglik = self.ImageModel.loglikelihood(self.tiled_image, locs, features)
+        
+        return logprior + temperature * loglik
 
-    def tempering_objective(self, log_likelihood, delta):
-        log_numerator = 2 * ((delta * log_likelihood).logsumexp(0))
-        log_denominator = (2 * delta * log_likelihood).logsumexp(0)
+
+    def tempering_objective(self, loglikelihood, delta):
+        log_numerator = 2 * ((delta * loglikelihood).logsumexp(0))
+        log_denominator = (2 * delta * loglikelihood).logsumexp(0)
 
         return (log_numerator - log_denominator).exp() - self.ESS_threshold_tempering
 
+
     def temper(self):
-        self.loglik = self.tempered_log_likelihood(self.fluxes, self.locs, 1)
+        self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.features)
         
-        solutions = torch.zeros(self.num_tiles_h, self.num_tiles_w)
+        solutions = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
         
-        for h in range(self.num_tiles_h):
-            for w in range(self.num_tiles_w):
+        for h in range(self.num_tiles_per_side):
+            for w in range(self.num_tiles_per_side):
                 def func(delta):
                     return self.tempering_objective(self.loglik[h,w], delta)
                 
                 if func(1 - self.temperature.item()) < 0:
                     solutions[h,w] = brentq(func, 0.0, 1 - self.temperature.item(),
-                                            maxiter=500, xtol=1e-8, rtol=1e-8)
+                                            maxiter = 500, xtol = 1e-8, rtol = 1e-8)
                 else:
                     solutions[h,w] = 1 - self.temperature.item()
                 
@@ -116,92 +102,87 @@ class SMCsampler(object):
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + delta
     
+    
     def resample(self):
-        for block_num in range(self.num_blocks):
-            resampled_index = self.weights_intrablock[:,:,block_num,:].flatten(0,1).multinomial(self.catalogs_per_block,
-                                                                                                replacement = True).unflatten(0, (self.num_tiles_h, self.num_tiles_w))
-            resampled_index = resampled_index.clamp(min = 0, max = self.catalogs_per_block - 1)
+        for count_num in range(self.num_counts):
+            weights_intracount_flat = self.weights_intracount[:,:,count_num,:].flatten(0,1)
+            resampled_index_flat = weights_intracount_flat.multinomial(self.num_catalogs_per_count, replacement = True)
+            resampled_index = resampled_index_flat.unflatten(0, (self.num_tiles_per_side, self.num_tiles_per_side))
+            resampled_index = resampled_index.clamp(min = 0, max = self.num_catalogs_per_count - 1)
             
-            lower = block_num*self.catalogs_per_block
-            upper = (block_num+1)*self.catalogs_per_block
+            lower = count_num * self.num_catalogs_per_count
+            upper = (count_num + 1) * self.num_catalogs_per_count
             
-            for h in range(self.num_tiles_h):
-                for w in range(self.num_tiles_w):
-                    f = self.fluxes[h,w,lower:upper,:]
+            for h in range(self.num_tiles_per_side):
+                for w in range(self.num_tiles_per_side):
                     l = self.locs[h,w,lower:upper,:,:]
-                    self.fluxes[h,w,lower:upper,:] = f[resampled_index[h,w,:],:]
+                    f = self.features[h,w,lower:upper,:]
                     self.locs[h,w,lower:upper,:,:] = l[resampled_index[h,w,:],:,:]
+                    self.features[h,w,lower:upper,:] = f[resampled_index[h,w,:],:]
                     
-            self.weights_intrablock[:,:,block_num,:] = (1/self.catalogs_per_block) * torch.ones(self.num_tiles_h, self.num_tiles_w, self.catalogs_per_block)
-            self.weights_interblock[:,:,lower:upper] = (self.weights_interblock[:,:,lower:upper].sum(2)/self.catalogs_per_block).unsqueeze(2).repeat(1, 1, self.catalogs_per_block)
+            self.weights_intracount[:,:,count_num,:] = 1/self.num_catalogs_per_count
+            tmp_weights_intercount = (self.weights_intercount[:,:,lower:upper].sum(2) / self.num_catalogs_per_count)
+            self.weights_intercount[:,:,lower:upper] = tmp_weights_intercount.unsqueeze(2).repeat(1, 1, self.num_catalogs_per_count)
     
-    def MH(self, num_iters, fluxes_stdev, locs_stdev):
-        fluxes_proposal_stdev = fluxes_stdev * torch.ones(1)
-        locs_proposal_stdev = locs_stdev * torch.ones(1)
-        
-        count_indicator = torch.arange(1, self.num_blocks).unsqueeze(0) <= self.counts.unsqueeze(3)
-        
-        fluxes_prev = self.fluxes
-        locs_prev = self.locs
-        
-        for iter in range(num_iters):
-            fluxes_proposed = Normal(fluxes_prev, fluxes_proposal_stdev).sample() * count_indicator
-            locs_proposed = TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev,
-                                                 torch.tensor(0) - torch.tensor(self.prior.pad),
-                                                 torch.tensor(self.tile_attr.img_height) + torch.tensor(self.prior.pad)).sample() * count_indicator.unsqueeze(4)
-            
-            log_numerator = self.log_target(self.counts, fluxes_proposed, locs_proposed, self.temperature_prev)
-            log_numerator += (TruncatedDiagonalMVN(locs_proposed, locs_proposal_stdev,
-                                                   torch.tensor(0) - torch.tensor(self.prior.pad),
-                                                   torch.tensor(self.tile_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_prev) * count_indicator.unsqueeze(4)).sum([3,4])
-
-            if iter == 0:
-                log_denominator = self.log_target(self.counts, fluxes_prev, locs_prev, self.temperature_prev)
-                log_denominator += (TruncatedDiagonalMVN(locs_prev, locs_proposal_stdev,
-                                                         torch.tensor(0) - torch.tensor(self.prior.pad),
-                                                         torch.tensor(self.tile_attr.img_height) + torch.tensor(self.prior.pad)).log_prob(locs_proposed) * count_indicator.unsqueeze(4)).sum([3,4])
-        
-            alpha = (log_numerator - log_denominator).exp().clamp(max = 1)
-            prob = Uniform(torch.zeros(self.num_tiles_h, self.num_tiles_w, self.num_catalogs),
-                           torch.ones(self.num_tiles_h, self.num_tiles_w, self.num_catalogs)).sample()
-            accept = prob <= alpha
-            
-            fluxes_new = fluxes_proposed * (accept).unsqueeze(3) + fluxes_prev * (~accept).unsqueeze(3)
-            locs_new = locs_proposed * (accept).view(self.num_tiles_h, self.num_tiles_w, -1, 1, 1) + locs_prev * (~accept).view(self.num_tiles_h, self.num_tiles_w, -1, 1, 1)
-        
-            # Cache log_denominator for next iteration
-            log_denominator = log_numerator * (accept) + log_denominator * (~accept)
-            
-            fluxes_prev = fluxes_new
-            locs_prev = locs_new
-        
-        return [fluxes_new, locs_new]
     
-    def propagate(self):
-        self.fluxes, self.locs = self.MH(num_iters = self.kernel_num_iters,
-                                         fluxes_stdev = self.kernel_fluxes_stdev,
-                                         locs_stdev = self.kernel_locs_stdev)
-        
+    def mutate(self):
+        self.locs, self.features = self.MutationKernel.run(self.counts, self.locs, self.features,
+                                                           self.temperature_prev, self.log_target)
+    
+    
     def update_weights(self):
         weights_log_incremental = (self.temperature - self.temperature_prev) * self.loglik
         
-        self.weights_log_unnorm = self.weights_interblock.log() + weights_log_incremental
+        self.weights_log_unnorm = self.weights_intercount.log() + weights_log_incremental
         self.weights_log_unnorm = torch.nan_to_num(self.weights_log_unnorm, -torch.inf)
         
-        self.weights_intrablock = torch.stack(torch.split(self.weights_log_unnorm, self.catalogs_per_block, dim=2), dim=2).softmax(3)
-        self.weights_interblock = self.weights_log_unnorm.softmax(2)
+        self.weights_intracount = torch.stack(torch.split(self.weights_log_unnorm,
+                                                          self.num_catalogs_per_count,
+                                                          dim = 2), dim = 2).softmax(3)
+        self.weights_intercount = self.weights_log_unnorm.softmax(2)
         
         m = self.weights_log_unnorm.max(2).values
         w = (self.weights_log_unnorm - m.unsqueeze(2)).exp()
         s = w.sum(2)
         self.log_normalizing_constant = self.log_normalizing_constant + m + (s/self.num_catalogs).log()
         
-        self.ESS = 1/(self.weights_intrablock**2).sum(3)
+        self.ESS = 1/(self.weights_intracount ** 2).sum(3)
 
-    def run_tiles(self, print_progress = True):
+
+    def resample_intercount(self):
+        weights_intercount_flat = self.weights_intercount.flatten(0,1)
+        resampled_index_flat = weights_intercount_flat.multinomial(self.num_catalogs, replacement = True)
+        resampled_index = resampled_index_flat.unflatten(0, (self.num_tiles_per_side, self.num_tiles_per_side))
+        resampled_index = resampled_index.clamp(min = 0, max = self.num_catalogs - 1)
+        
+        for h in range(self.num_tiles_per_side):
+            for w in range(self.num_tiles_per_side):
+                self.counts[h,w,:] = self.counts[h,w,resampled_index[h,w,:]]
+                self.locs[h,w,:] = self.locs[h,w,resampled_index[h,w,:]]
+                self.features[h,w,:] = self.features[h,w,resampled_index[h,w,:]]
+                self.weights_intercount[h,w,:] = 1 / self.num_catalogs
+        
+    
+    def prune(self):
+        in_bounds = torch.all(torch.logical_and(self.locs > 0, self.locs < self.tile_dim), dim = 4)
+        self.counts = in_bounds.sum(3)
+        self.locs = in_bounds.unsqueeze(4) * self.locs
+        self.features = in_bounds * self.features
+        
+        features_mask = (self.features != 0).int()
+        features_index = torch.sort(features_mask, dim = 3, descending = True)[1]
+        self.features = torch.gather(self.features, dim = 3, index = features_index)
+        
+        locs_mask = (self.locs != 0).int()
+        locs_index = torch.sort(locs_mask, dim = 3, descending = True)[1]
+        self.locs = torch.gather(self.locs, dim = 3, index = locs_index)
+        
+        
+    def run(self, print_progress = True):
         self.iter = 0
         
-        print("Starting the tile samplers...")
+        if print_progress is True:
+            print("Starting the tile samplers...")
         
         self.temper()
         self.update_weights()
@@ -209,114 +190,33 @@ class SMCsampler(object):
         while self.temperature < 1 and self.iter <= self.max_smc_iters:
             self.iter += 1
             
-            if print_progress == True and self.iter % 5 == 0:
+            if print_progress is True and self.iter % 5 == 0:
                 print(f"iteration {self.iter}, temperature = {self.temperature.item()}")
             
             self.resample()
-            self.propagate()
+            self.mutate()
             self.temper()
             self.update_weights()
         
-        print("Done!\n")
-    
-    def resample_interblock(self, m):
-        print("Combining the results...")
-        
-        resample_index = self.weights_interblock.flatten(0,1).multinomial(m * self.catalogs_per_block,
-                                                                          replacement = True).unflatten(0, (self.num_tiles_h, self.num_tiles_w))
-        
-        c = torch.zeros(self.num_tiles_h, self.num_tiles_w, m * self.catalogs_per_block)
-        f = torch.zeros(self.num_tiles_h, self.num_tiles_w, m * self.catalogs_per_block, self.prior.max_objects)
-        l = torch.zeros(self.num_tiles_h, self.num_tiles_w, m * self.catalogs_per_block, self.prior.max_objects, 2)
-
-        for h in range(self.num_tiles_h):
-            for w in range(self.num_tiles_w):
-                c[h,w] = self.counts[h,w,resample_index[h,w,:]]
-                f[h,w] = self.fluxes[h,w,resample_index[h,w,:],:]
-                l[h,w] = self.locs[h,w,resample_index[h,w,:],:,:]
-        
-        self.counts = c
-        self.fluxes = f
-        self.locs = l
-        
-        print("Done!\n")
-    
-    def prune(self):
-        print("Pruning detections...")
-        
-        invalid_sources = torch.any(torch.logical_or(self.locs < 0,
-                                                     self.locs > self.tile_side_length), dim = 4)
-        invalid_catalogs = invalid_sources.sum(3)
-        
-        self.counts -= invalid_catalogs
-        
-        print("Done!\n")
-    
-    def run(self, print_progress = True):
-        self.run_tiles(print_progress)
-        
-        if self.product_form == True:
-            self.resample_interblock(self.product_form_multiplier)
-            self.prune()
+        self.resample_intercount()
+        self.prune()
         
         self.has_run = True
-    
-    @property
-    def image_counts(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
         
-        if self.product_form == True:
-            image_counts = self.counts.sum([0,1])
-        elif self.product_form == False:
-            image_counts = (self.counts.squeeze() * self.weights_interblock).sum()
-        return image_counts
+        if print_progress is True:
+            print("Done!\n")
+    
     
     @property
-    def image_total_flux(self):
+    def posterior_mean_counts(self):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
-        
-        if self.product_form == True:
-            image_total_flux = self.fluxes.sum([0,1,3])
-        elif self.product_form == False:
-            image_total_flux = (self.fluxes.squeeze().sum(1) * self.weights_interblock).sum()
-        return image_total_flux
+        return self.counts.float().mean(2).round(decimals = 2)
     
-    @property
-    def posterior_mean_count(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
-        return self.image_counts.mean()
     
-    @property
-    def posterior_mean_total_flux(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
-        return self.image_total_flux.mean()
-    
-    # @property
-    # def reconstructed_image(self):
-    #     if self.has_run == False:
-    #         raise ValueError("Sampler hasn't been run yet.")
-    #     argmax_index = self.weights_interblock.argmax()
-    #     return ((self.img_attr.PSF(self.locs.shape[1],
-    #                                self.locs[argmax_index,:,0],
-    #                                self.locs[argmax_index,:,1]
-    #             ) * self.fluxes[argmax_index,:].view(1, 1, -1)).sum(3) + self.img_attr.background_intensity).squeeze()
-    
-    def summarize(self, display_images = True):
+    def summarize(self):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
         
         print(f"summary\nnumber of SMC iterations: {self.iter}")
-                
-        print(f"posterior mean count: {self.posterior_mean_count}")
-        print(f"posterior mean total flux: {self.posterior_mean_total_flux}\n\n\n")
-        
-        # if display_images == True:
-        #     fig, (original, reconstruction) = plt.subplots(nrows = 1, ncols = 2)
-        #     _ = original.imshow(self.img.cpu(), origin='lower')
-        #     _ = original.set_title('original')
-        #     _ = reconstruction.imshow(self.reconstructed_image.cpu(), origin='lower')
-        #     _ = reconstruction.set_title('reconstruction')
+        print(f"posterior mean count by tile:\n{self.posterior_mean_counts}")

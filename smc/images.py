@@ -1,51 +1,55 @@
 import torch
 from torch.distributions import Poisson
+from einops import rearrange
 
-class ImageAttributes(object):
+class ImageModel(object):
     def __init__(self,
-                 img_height: int,
-                 img_width: int,
-                 max_objects: int,
-                 psf_stdev: float,
-                 background_intensity: float):
-        
-        self.img_height = img_height
-        self.img_width = img_width
-        self.PSF_marginal_H = (1 + torch.arange(self.img_height, dtype=torch.float32)).view(1, self.img_height, 1, 1)
-        self.PSF_marginal_W = (1 + torch.arange(self.img_width, dtype=torch.float32)).view(1, 1, self.img_width, 1)
-        
-        self.max_objects = max_objects
-        self.max_count = self.max_objects + 1
-        
+                 image_height,
+                 image_width,
+                 psf_stdev,
+                 background):
+        self.image_height = image_height
+        self.image_width = image_width
         self.psf_stdev = psf_stdev
-        self.background_intensity = background_intensity
+        self.background = background
+        self.update_attrs()
     
-    def PSF(self, num_layers, loc_H, loc_W):
-        logpsf = (-(self.PSF_marginal_H - loc_H.view(-1, 1, 1, num_layers))**2 -
-                 (self.PSF_marginal_W - loc_W.view(-1, 1, 1, num_layers))**2)/(2*self.psf_stdev**2)
-        psf = (logpsf - logpsf.logsumexp([1,2]).view(-1, 1, 1, num_layers)).exp()
+    
+    def update_attrs(self):
+        marginal_h = 1 + torch.arange(self.image_height, dtype = torch.float32)
+        marginal_w = 1 + torch.arange(self.image_width, dtype = torch.float32)
+        self.psf_marginal_h = marginal_h.view(1, self.image_height, 1, 1)
+        self.psf_marginal_w = marginal_w.view(1, 1, self.image_width, 1)
+    
+    
+    def psf(self, locs):
+        loc_h = locs[...,0].unsqueeze(-2).unsqueeze(-3)
+        loc_w = locs[...,1].unsqueeze(-2).unsqueeze(-3)
+        logpsf = (- (self.psf_marginal_h - loc_h)**2 - (self.psf_marginal_w - loc_w)**2) / (2 * self.psf_stdev**2)
+        psf = (logpsf - logpsf.logsumexp([-2,-3]).unsqueeze(-2).unsqueeze(-3)).exp()
         
         return psf
     
-    def tilePSF(self, num_layers, loc_H, loc_W):
-        logpsf = (-(self.PSF_marginal_H - loc_H.view(loc_H.shape[0], loc_H.shape[1], -1, 1, 1, num_layers))**2 -
-                 (self.PSF_marginal_W - loc_W.view(loc_W.shape[0], loc_W.shape[1], -1, 1, 1, num_layers))**2)/(2*self.psf_stdev**2)
-        psf = (logpsf - logpsf.logsumexp([3, 4]).view(logpsf.shape[0], logpsf.shape[1], -1, 1, 1, num_layers)).exp()
-        
-        return psf
     
-    def generate(self,
-                 prior,
-                 num = 1):
+    def generate(self, Prior, num_images = 1):
+        catalogs = Prior.sample(num_catalogs = num_images)
+        counts, locs, features = catalogs
         
-        catalogs = prior.sample(num_catalogs = num)
-        counts, fluxes, locs = catalogs
+        counts = counts.squeeze([0,1])
+        locs = locs.squeeze([0,1])
+        features = features.squeeze([0,1])
         
-        source_intensities = (fluxes.view(num, 1, 1, self.max_objects) * self.PSF(self.max_objects,
-                                                                                  locs[:,:,0],
-                                                                                  locs[:,:,1])).sum(3)
-        total_intensities = source_intensities + self.background_intensity
+        psf = self.psf(locs)
+        rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(-1) + self.background
+        images = Poisson(rate).sample()
         
-        images = Poisson(total_intensities).sample()
-        
-        return [counts, fluxes, locs, total_intensities, images]
+        return [counts, locs, features, images]
+
+
+    def loglikelihood(self, tiled_image, locs, features):
+        psf = self.psf(locs)
+        rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(-1) + self.background
+        rate = rearrange(rate, '... n h w -> ... h w n')
+        loglik = Poisson(rate).log_prob(tiled_image.unsqueeze(-1)).sum([-2,-3])
+
+        return loglik
