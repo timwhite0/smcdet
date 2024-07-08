@@ -64,10 +64,9 @@ class Aggregate(object):
         # counts
         self.counts = self.counts.unfold(axis, 2, 2).sum(3)
         # locs
-        # THIS DOESN'T WORK; ALL LOCS GET ADJUSTED INSTEAD OF JUST THOSE FROM THE APPENDED TILES
         locs_unfolded = self.locs.unfold(axis, 2, 2)
         locs_unfolded_mask = (locs_unfolded != 0).int()
-        locs_unfolded[...,axis,:] = locs_unfolded[...,axis,:] + (self.dimH / 2) * (1 - axis) + (self.dimW / 2) * axis
+        locs_unfolded.select(-2, axis)[...,-1] += (self.dimH / 2) * (1 - axis) + (self.dimW / 2) * axis
         locs_adjusted = locs_unfolded * locs_unfolded_mask
         self.locs = rearrange(locs_adjusted,
                               'numH numW N M l t -> numH numW N (t M) l')
@@ -92,14 +91,11 @@ class Aggregate(object):
     
     def run(self):
         for level in range(self.num_aggregation_levels):
-            print(level)
             self.resample()
             self.log_target_prev = self.compute_log_target()
             if level % 2 == 0:
-                print("axis = 0")
                 self.join(axis = 0)
             elif level % 2 != 0:
-                print("axis = 1")
                 self.join(axis = 1)
             self.log_target_curr = self.compute_log_target()
             self.weights = (self.log_target_curr - self.log_target_prev).softmax(-1)

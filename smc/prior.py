@@ -13,12 +13,14 @@ class PointProcessPrior(object):
         self.pad = pad
         self.update_attrs()
     
+    
     def update_attrs(self):
         self.num_counts = self.max_objects + 1    
         self.count_prior = Categorical((1 / self.num_counts) * torch.ones(self.num_counts))
         self.loc_prior = Uniform((0 - self.pad) * torch.ones(2),
                                  torch.tensor((self.image_height + self.pad,
                                                self.image_width + self.pad)))
+    
     
     def sample(self,
                num_catalogs = 1,

@@ -14,11 +14,13 @@ class ImageModel(object):
         self.background = background
         self.update_attrs()
     
+    
     def update_attrs(self):
         marginal_h = 1 + torch.arange(self.image_height, dtype = torch.float32)
         marginal_w = 1 + torch.arange(self.image_width, dtype = torch.float32)
         self.psf_marginal_h = marginal_h.view(1, self.image_height, 1, 1)
         self.psf_marginal_w = marginal_w.view(1, 1, self.image_width, 1)
+    
     
     def psf(self, locs):
         loc_h = locs[...,0].unsqueeze(-2).unsqueeze(-3)
@@ -45,9 +47,11 @@ class ImageModel(object):
 
 
     def loglikelihood(self, tiled_image, locs, features):
+        print(features.min())
         psf = self.psf(locs)
         rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(-1) + self.background
         rate = rearrange(rate, '... n h w -> ... h w n')
+        print(rate.min())
         loglik = Poisson(rate).log_prob(tiled_image.unsqueeze(-1)).sum([-2,-3])
 
         return loglik
