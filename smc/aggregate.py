@@ -21,9 +21,8 @@ class Aggregate(object):
         self.weights = weights
         self.num_catalogs = self.weights.shape[-1]
         
-        self.numH = self.data.shape[0]
-        self.numW = self.data.shape[1]
-        self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).item()
+        self.numH, self.numW, self.dimH, self.dimW = self.data.shape
+        self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).int().item()
         
         self.log_target_prev = self.compute_log_target()
         self.log_target_curr = None
@@ -47,26 +46,30 @@ class Aggregate(object):
     def join(self, axis):
         if axis == 0:  # height axis
             self.numH = self.numH // 2
+            self.dimH = self.dimH * 2
             self.ImageModel.image_height = self.ImageModel.image_height * 2
-            self.ImageModel.update_attrs()
             self.Prior.image_height = self.Prior.image_height * 2
-            self.Prior.max_objects = self.Prior.max_objects * 2
-            self.Prior.update_attrs()
             self.data = rearrange(self.data.unfold(axis, 2, 2),
                                   'numH numW dimH dimW t -> numH numW (t dimH) dimW')
         elif axis == 1:  # width axis
             self.numW = self.numW // 2
+            self.dimW = self.dimW * 2
             self.ImageModel.image_width = self.ImageModel.image_width * 2
-            self.ImageModel.update_attrs()
             self.Prior.image_width = self.Prior.image_width * 2
-            self.Prior.max_objects = self.Prior.max_objects * 2
-            self.Prior.update_attrs()
             self.data = rearrange(self.data.unfold(axis, 2, 2),
                                   'numH numW dimH dimW t -> numH numW dimH (t dimW)')
+        self.Prior.max_objects = self.Prior.max_objects * 2
+        self.Prior.update_attrs()
+        self.ImageModel.update_attrs()
         # counts
         self.counts = self.counts.unfold(axis, 2, 2).sum(3)
         # locs
-        self.locs = rearrange(self.locs.unfold(axis, 2, 2),
+        # THIS DOESN'T WORK; ALL LOCS GET ADJUSTED INSTEAD OF JUST THOSE FROM THE APPENDED TILES
+        locs_unfolded = self.locs.unfold(axis, 2, 2)
+        locs_unfolded_mask = (locs_unfolded != 0).int()
+        locs_unfolded[...,axis,:] = locs_unfolded[...,axis,:] + (self.dimH / 2) * (1 - axis) + (self.dimW / 2) * axis
+        locs_adjusted = locs_unfolded * locs_unfolded_mask
+        self.locs = rearrange(locs_adjusted,
                               'numH numW N M l t -> numH numW N (t M) l')
         locs_mask = (self.locs != 0).int()
         locs_index = torch.sort(locs_mask, dim = 3, descending = True)[1]
@@ -88,14 +91,15 @@ class Aggregate(object):
     
     
     def run(self):
-        self.resample()
-        self.log_target_prev = self.compute_log_target()
-        self.join(axis = 0)
-        self.log_target_curr = self.compute_log_target()
-        self.weights = (self.log_target_curr - self.log_target_prev).softmax(-1)
-        
-        self.resample()
-        self.log_target_prev = self.compute_log_target()
-        self.join(axis = 1)
-        self.log_target_curr = self.compute_log_target()
-        self.weights = (self.log_target_curr - self.log_target_prev).softmax(-1)
+        for level in range(self.num_aggregation_levels):
+            print(level)
+            self.resample()
+            self.log_target_prev = self.compute_log_target()
+            if level % 2 == 0:
+                print("axis = 0")
+                self.join(axis = 0)
+            elif level % 2 != 0:
+                print("axis = 1")
+                self.join(axis = 1)
+            self.log_target_curr = self.compute_log_target()
+            self.weights = (self.log_target_curr - self.log_target_prev).softmax(-1)
