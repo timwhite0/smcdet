@@ -26,7 +26,7 @@ class SMCsampler(object):
         self.MutationKernel = MutationKernel
         self.MutationKernel.locs_lower = 0 - self.Prior.pad
         self.MutationKernel.locs_upper = self.tile_dim + self.Prior.pad
-        self.MutationKernel.features_lower = torch.zeros(1)
+        self.MutationKernel.features_lower = self.Prior.feature_prior.scale
         self.MutationKernel.features_upper = torch.inf
         
         self.max_objects = self.Prior.max_objects
@@ -121,7 +121,7 @@ class SMCsampler(object):
                     self.features[h,w,lower:upper,:] = f[resampled_index[h,w,:],:]
                     
             self.weights_intracount[:,:,count_num,:] = 1/self.num_catalogs_per_count
-            tmp_weights_intercount = (self.weights_intercount[:,:,lower:upper].sum(2) / self.num_catalogs_per_count)
+            tmp_weights_intercount = self.weights_intercount[:,:,lower:upper].sum(2) / self.num_catalogs_per_count
             self.weights_intercount[:,:,lower:upper] = tmp_weights_intercount.unsqueeze(2).repeat(1, 1, self.num_catalogs_per_count)
     
     

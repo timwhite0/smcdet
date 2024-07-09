@@ -1,5 +1,5 @@
 import torch
-from torch.distributions import Normal, Uniform, Categorical
+from torch.distributions import Pareto, Uniform, Categorical
 
 class PointProcessPrior(object):
     def __init__(self,
@@ -60,11 +60,13 @@ class PointProcessPrior(object):
 class StarPrior(PointProcessPrior):
     def __init__(self,
                  *args,
-                 min_flux: float,
+                 flux_scale,
+                 flux_shape,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        self.min_flux = min_flux
-        self.feature_prior = Normal(10 * self.min_flux, 2 * self.min_flux)
+        self.flux_scale = flux_scale
+        self.flux_shape = flux_shape
+        self.feature_prior = Pareto(self.flux_scale, self.flux_shape)
     
     def sample(self,
                num_catalogs = 1,
@@ -84,4 +86,6 @@ class StarPrior(PointProcessPrior):
     def log_prob(self, counts, locs, features):
         log_prior = super().log_prob(counts, locs)
         
-        return log_prior + (self.feature_prior.log_prob(features) * self.count_indicator).sum(-1)
+        # add fudge to dummy vals before log_prob because the empty slots in features are zeros
+        fudge = self.feature_prior.scale
+        return log_prior + (self.feature_prior.log_prob(features + fudge * (features == 0)) * self.count_indicator).sum(-1)
