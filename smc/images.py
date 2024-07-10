@@ -16,8 +16,8 @@ class ImageModel(object):
     
     
     def update_attrs(self):
-        marginal_h = 1 + torch.arange(self.image_height, dtype = torch.float32)
-        marginal_w = 1 + torch.arange(self.image_width, dtype = torch.float32)
+        marginal_h = 0.5 + torch.arange(self.image_height, dtype = torch.float32)
+        marginal_w = 0.5 + torch.arange(self.image_width, dtype = torch.float32)
         self.psf_marginal_h = marginal_h.view(1, self.image_height, 1, 1)
         self.psf_marginal_w = marginal_w.view(1, 1, self.image_width, 1)
     
