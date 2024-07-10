@@ -13,6 +13,7 @@ class ImageModel(object):
         self.psf_stdev = psf_stdev
         self.background = background
         self.update_attrs()
+        self.logpsfdenom = self.compute_logpsfdenom(slen = 64 * image_height)
     
     
     def update_attrs(self):
@@ -22,11 +23,20 @@ class ImageModel(object):
         self.psf_marginal_w = marginal_w.view(1, 1, self.image_width, 1)
     
     
+    def compute_logpsfdenom(self, slen):
+        marginal_h = (0.5 + torch.arange(slen)).unsqueeze(-1)
+        marginal_w = (0.5 + torch.arange(slen)).unsqueeze(0)
+        loc = torch.tensor((slen / 2, slen / 2))
+        logpsf = (- (marginal_h - loc[0])**2 - (marginal_w - loc[1])**2) / (2 * self.psf_stdev**2)
+        
+        return logpsf.logsumexp([0,1])
+    
+    
     def psf(self, locs):
         loc_h = locs[...,0].unsqueeze(-2).unsqueeze(-3)
         loc_w = locs[...,1].unsqueeze(-2).unsqueeze(-3)
         logpsf = (- (self.psf_marginal_h - loc_h)**2 - (self.psf_marginal_w - loc_w)**2) / (2 * self.psf_stdev**2)
-        psf = (logpsf - logpsf.logsumexp([-2,-3]).unsqueeze(-2).unsqueeze(-3)).exp()
+        psf = (logpsf - self.logpsfdenom).exp()
         
         return psf
     
