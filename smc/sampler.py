@@ -211,7 +211,7 @@ class SMCsampler(object):
     def posterior_mean_counts(self):
         if self.has_run == False:
             raise ValueError("Sampler hasn't been run yet.")
-        return self.counts.float().mean(2).round(decimals = 2)
+        return self.counts.float().mean(2)
     
     
     def summarize(self):
