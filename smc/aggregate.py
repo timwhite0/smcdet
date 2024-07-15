@@ -12,6 +12,8 @@ class Aggregate(object):
                  features,
                  weights):
         self.Prior = deepcopy(Prior)
+        self.Prior.pad = 0
+        self.Prior.update_attrs()
         self.ImageModel = deepcopy(ImageModel)
         
         self.data = data
