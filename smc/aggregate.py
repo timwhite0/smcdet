@@ -1,5 +1,5 @@
 import torch
-from einops import rearrange
+from einops import rearrange, repeat
 from copy import deepcopy
 
 class Aggregate(object):
@@ -24,23 +24,41 @@ class Aggregate(object):
         self.numH, self.numW, self.dimH, self.dimW = self.data.shape
         self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).int().item()
         
-        self.log_target_prev = self.compute_log_target()
-        self.log_target_curr = None
+        self.log_density_children = self.compute_log_density()
+        self.log_density_parents = None
     
     
-    def resample(self):
+    def resample(self, multiplier):
+        num = int(multiplier * self.num_catalogs)
+        
         weights_flat = self.weights.flatten(0,1)
-        resampled_index_flat = weights_flat.multinomial(self.num_catalogs,
+        resampled_index_flat = weights_flat.multinomial(num,
                                                         replacement = True).clamp(min = 0,
-                                                                                  max = self.num_catalogs - 1)
+                                                                                  max = num - 1)
         resampled_index = resampled_index_flat.unflatten(0, (self.numH, self.numW))
+        
+        if multiplier >= 1:
+            counts = repeat(torch.zeros_like(self.counts), 'numH numW N -> numH numW (m N)', m = multiplier)
+            locs = repeat(torch.zeros_like(self.locs), 'numH numW N ... -> numH numW (m N) ...', m = multiplier)
+            features = repeat(torch.zeros_like(self.features), 'numH numW N ... -> numH numW (m N) ...', m = multiplier)
+            weights = repeat(torch.zeros_like(self.weights), 'numH numW N -> numH numW (m N)', m = multiplier)
+        if multiplier < 1:
+            counts = torch.zeros_like(self.counts)[:,:,:num]
+            locs = torch.zeros_like(self.locs)[:,:,:num,...]
+            features = torch.zeros_like(self.features)[:,:,:num,...]
+            weights = torch.zeros_like(self.weights)[:,:,:num]
         
         for h in range(self.numH):
             for w in range(self.numW):
-                self.counts[h,w,:] = self.counts[h,w,resampled_index[h,w,:]]
-                self.locs[h,w,:] = self.locs[h,w,resampled_index[h,w,:]]
-                self.features[h,w,:] = self.features[h,w,resampled_index[h,w,:]]
-                self.weights[h,w,:] = 1 / self.num_catalogs
+                counts[h,w,:] = self.counts[h,w,resampled_index[h,w,:]]
+                locs[h,w,:] = self.locs[h,w,resampled_index[h,w,:]]
+                features[h,w,:] = self.features[h,w,resampled_index[h,w,:]]
+                weights[h,w,:] = 1 / num
+        
+        self.counts = counts
+        self.locs = locs
+        self.features = features
+        self.weights = weights
     
     
     def join(self, axis):
@@ -79,11 +97,11 @@ class Aggregate(object):
         features_mask = (self.features != 0).int()
         features_index = torch.sort(features_mask, dim = 3, descending = True)[1]
         self.features = torch.gather(self.features, dim = 3, index = features_index)
-        # log_target_prev
-        self.log_target_prev = self.log_target_prev.unfold(axis, 2, 2).sum(3)
+        # log_density_children
+        self.log_density_children = self.log_density_children.unfold(axis, 2, 2).sum(3)
     
     
-    def compute_log_target(self):
+    def compute_log_density(self):
         logprior = self.Prior.log_prob(self.counts, self.locs, self.features)
         loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.features)
         return logprior + loglik
@@ -91,11 +109,26 @@ class Aggregate(object):
     
     def run(self):
         for level in range(self.num_aggregation_levels):
-            self.resample()
-            self.log_target_prev = self.compute_log_target()
+            self.resample(multiplier = 1)
+            self.log_density_children = self.compute_log_density()
             if level % 2 == 0:
                 self.join(axis = 0)
             elif level % 2 != 0:
                 self.join(axis = 1)
-            self.log_target_curr = self.compute_log_target()
-            self.weights = (self.log_target_curr - self.log_target_prev).softmax(-1)
+            self.log_density_parents = self.compute_log_density()
+            self.weights = (self.log_density_parents - self.log_density_children).softmax(-1)
+
+
+    @property
+    def ESS(self):
+        return 1 / (self.weights**2).sum(-1)
+    
+    
+    @property
+    def posterior_mean_counts(self):
+        return (self.weights * self.counts).sum(-1)
+
+
+    @property
+    def posterior_mean_total_flux(self):
+        return (self.weights * self.features.sum(-1)).sum(-1)
