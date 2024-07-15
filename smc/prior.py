@@ -1,5 +1,5 @@
 import torch
-from torch.distributions import Pareto, Uniform, Categorical
+from torch.distributions import Normal, Uniform, Categorical
 
 class PointProcessPrior(object):
     def __init__(self,
@@ -66,7 +66,7 @@ class StarPrior(PointProcessPrior):
         super().__init__(*args, **kwargs)
         self.flux_scale = flux_scale
         self.flux_shape = flux_shape
-        self.feature_prior = Pareto(self.flux_scale, self.flux_shape)
+        self.feature_prior = Normal(self.flux_scale, self.flux_shape)
     
     def sample(self,
                num_catalogs = 1,
@@ -77,7 +77,7 @@ class StarPrior(PointProcessPrior):
                                       stratify_by_count, num_catalogs_per_count)
         
         features = self.feature_prior.sample([num_tiles_per_side, num_tiles_per_side,
-                                              self.num, self.max_objects])
+                                              self.num, self.max_objects]).clamp(min = 0.0)
         features *= self.count_indicator
         
         return [counts, locs, features]
@@ -87,5 +87,5 @@ class StarPrior(PointProcessPrior):
         log_prior = super().log_prob(counts, locs)
         
         # add fudge to dummy vals before log_prob because the empty slots in features are zeros
-        fudge = self.feature_prior.scale
+        fudge = 0 # for Pareto fluxes: self.feature_prior.scale
         return log_prior + (self.feature_prior.log_prob(features + fudge * (features == 0)) * self.count_indicator).sum(-1)

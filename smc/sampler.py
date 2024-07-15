@@ -14,7 +14,7 @@ class SMCsampler(object):
         self.image_dim = image.shape[0]
         
         self.tile_dim = tile_dim
-        self.num_tiles_per_side = self.image_dim  // self.tile_dim
+        self.num_tiles_per_side = self.image_dim // self.tile_dim
         self.tiled_image = image.unfold(0,
                                         self.tile_dim,
                                         self.tile_dim).unfold(1,
@@ -26,7 +26,7 @@ class SMCsampler(object):
         self.MutationKernel = MutationKernel
         self.MutationKernel.locs_lower = 0 - self.Prior.pad
         self.MutationKernel.locs_upper = self.tile_dim + self.Prior.pad
-        self.MutationKernel.features_lower = self.Prior.feature_prior.scale
+        self.MutationKernel.features_lower = 0.0 # for Pareto fluxes: self.Prior.feature_prior.scale
         self.MutationKernel.features_upper = torch.inf
         
         self.max_objects = self.Prior.max_objects
