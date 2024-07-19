@@ -103,12 +103,23 @@ class SMCsampler(object):
         self.temperature = self.temperature + delta
     
     
-    def resample(self):
+    def resample(self, method = "systematic"):    
         for count_num in range(self.num_counts):
-            weights_intracount_flat = self.weights_intracount[:,:,count_num,:].flatten(0,1)
-            resampled_index_flat = weights_intracount_flat.multinomial(self.num_catalogs_per_count, replacement = True)
-            resampled_index = resampled_index_flat.unflatten(0, (self.num_tiles_per_side, self.num_tiles_per_side))
-            resampled_index = resampled_index.clamp(min = 0, max = self.num_catalogs_per_count - 1)
+            weights = self.weights_intracount[:,:,count_num,:]
+            
+            if method == "multinomial":
+                weights_intracount_flat = weights.flatten(0,1)
+                resampled_index_flat = weights_intracount_flat.multinomial(self.num_catalogs_per_count, replacement = True)
+                resampled_index = resampled_index_flat.unflatten(0, (self.num_tiles_per_side, self.num_tiles_per_side))
+            elif method == "systematic":
+                resampled_index = torch.zeros_like(weights)
+                for h in range(self.num_tiles_per_side):
+                    for w in range(self.num_tiles_per_side):
+                        u = (torch.arange(self.num_catalogs_per_count) + torch.rand([1])) / self.num_catalogs_per_count
+                        bins = weights[h,w].cumsum(0)
+                        resampled_index[h,w] = torch.bucketize(u, bins)
+            
+            resampled_index = resampled_index.int().clamp(min = 0, max = self.num_catalogs_per_count - 1)
             
             lower = count_num * self.num_catalogs_per_count
             upper = (count_num + 1) * self.num_catalogs_per_count
@@ -149,19 +160,28 @@ class SMCsampler(object):
         self.ESS = 1/(self.weights_intracount ** 2).sum(3)
 
 
-    def resample_intercount(self):
-        weights_intercount_flat = self.weights_intercount.flatten(0,1)
-        resampled_index_flat = weights_intercount_flat.multinomial(self.num_catalogs, replacement = True)
-        resampled_index = resampled_index_flat.unflatten(0, (self.num_tiles_per_side, self.num_tiles_per_side))
-        resampled_index = resampled_index.clamp(min = 0, max = self.num_catalogs - 1)
+    def resample_intercount(self, method = "systematic"):
+        if method == "multinomial":
+            weights_intercount_flat = self.weights_intercount.flatten(0,1)
+            resampled_index_flat = weights_intercount_flat.multinomial(self.num_catalogs, replacement = True)
+            resampled_index = resampled_index_flat.unflatten(0, (self.num_tiles_per_side, self.num_tiles_per_side))
+        elif method == "systematic":
+            resampled_index = torch.zeros_like(self.weights_intercount)
+            for h in range(self.num_tiles_per_side):
+                for w in range(self.num_tiles_per_side):
+                    u = (torch.arange(self.num_catalogs) + torch.rand([1])) / self.num_catalogs
+                    bins = self.weights_intercount[h,w].cumsum(0)
+                    resampled_index[h,w] = torch.bucketize(u, bins)
         
+        resampled_index = resampled_index.int().clamp(min = 0, max = self.num_catalogs - 1)
+            
         for h in range(self.num_tiles_per_side):
             for w in range(self.num_tiles_per_side):
                 self.counts[h,w,:] = self.counts[h,w,resampled_index[h,w,:]]
                 self.locs[h,w,:] = self.locs[h,w,resampled_index[h,w,:]]
                 self.features[h,w,:] = self.features[h,w,resampled_index[h,w,:]]
                 self.weights_intercount[h,w,:] = 1 / self.num_catalogs
-        
+    
     
     def prune(self):
         in_bounds = torch.all(torch.logical_and(self.locs > 0, self.locs < self.tile_dim), dim = 4)

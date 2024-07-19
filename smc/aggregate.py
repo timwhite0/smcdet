@@ -30,14 +30,22 @@ class Aggregate(object):
         self.log_density_parents = None
     
     
-    def resample(self, multiplier):
+    def resample(self, method = "systematic", multiplier = 1):
         num = int(multiplier * self.num_catalogs)
         
-        weights_flat = self.weights.flatten(0,1)
-        resampled_index_flat = weights_flat.multinomial(num,
-                                                        replacement = True).clamp(min = 0,
-                                                                                  max = num - 1)
-        resampled_index = resampled_index_flat.unflatten(0, (self.numH, self.numW))
+        if method == "multinomial":
+            weights_flat = self.weights.flatten(0,1)
+            resampled_index_flat = weights_flat.multinomial(num, replacement = True)
+            resampled_index = resampled_index_flat.unflatten(0, (self.numH, self.numW))
+        elif method == "systematic":
+            resampled_index = torch.zeros_like(self.weights)
+            for h in range(self.numH):
+                for w in range(self.numW):
+                    u = (torch.arange(num) + torch.rand([1])) / num
+                    bins = self.weights[h,w].cumsum(0)
+                    resampled_index[h,w] = torch.bucketize(u, bins)
+        
+        resampled_index = resampled_index.int().clamp(min = 0, max = num - 1)
         
         if multiplier >= 1:
             counts = repeat(torch.zeros_like(self.counts), 'numH numW N -> numH numW (m N)', m = multiplier)
@@ -111,7 +119,7 @@ class Aggregate(object):
     
     def run(self):
         for level in range(self.num_aggregation_levels):
-            self.resample(multiplier = 1)
+            self.resample()
             self.log_density_children = self.compute_log_density()
             if level % 2 == 0:
                 self.join(axis = 0)
