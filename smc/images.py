@@ -33,7 +33,7 @@ class ImageModel(object):
         logpsf = logpsf_padded[...,
                                self.psf_pad:(self.image_height + self.psf_pad),
                                self.psf_pad:(self.image_width + self.psf_pad)]
-        psf = (logpsf - logpsf_padded.logsumexp([-1,-2], keepdim = True)).exp()
+        psf = logpsf.exp()
         
         return psf
     
