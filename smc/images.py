@@ -23,7 +23,7 @@ class ImageModel(object):
     def update_psf_grid(self):
         psf_marginal_h = torch.arange(-self.psf_pad, self.image_height + self.psf_pad)
         psf_marginal_w = torch.arange(-self.psf_pad, self.image_width + self.psf_pad)
-        grid_h, grid_w = torch.meshgrid(psf_marginal_h, psf_marginal_w)
+        grid_h, grid_w = torch.meshgrid(psf_marginal_h, psf_marginal_w, indexing = 'ij')
         self.psf_grid = torch.stack([grid_h, grid_w], dim = -1)
     
     
