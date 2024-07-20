@@ -1,5 +1,6 @@
 import torch
-from torch.distributions import Poisson
+import math
+from torch.distributions import Independent, Normal, Poisson
 from einops import rearrange
 
 class ImageModel(object):
@@ -12,31 +13,27 @@ class ImageModel(object):
         self.image_width = image_width
         self.psf_stdev = psf_stdev
         self.background = background
-        self.update_attrs()
-        self.logpsfdenom = self.compute_logpsfdenom(slen = 64 * image_height)
-    
-    
-    def update_attrs(self):
-        marginal_h = 0.5 + torch.arange(self.image_height, dtype = torch.float32)
-        marginal_w = 0.5 + torch.arange(self.image_width, dtype = torch.float32)
-        self.psf_marginal_h = marginal_h.view(1, self.image_height, 1, 1)
-        self.psf_marginal_w = marginal_w.view(1, 1, self.image_width, 1)
-    
-    
-    def compute_logpsfdenom(self, slen):
-        marginal_h = (0.5 + torch.arange(slen)).unsqueeze(-1)
-        marginal_w = (0.5 + torch.arange(slen)).unsqueeze(0)
-        loc = torch.tensor((slen / 2, slen / 2))
-        logpsf = (- (marginal_h - loc[0])**2 - (marginal_w - loc[1])**2) / (2 * self.psf_stdev**2)
         
-        return logpsf.logsumexp([0,1])
+        self.psf_pad = math.ceil(4 * psf_stdev)  # pad PSF by 4 stdevs
+        self.psf_density = Independent(Normal(torch.zeros(2),
+                                              self.psf_stdev * torch.ones(2)), 1)
+        self.update_psf_grid()
+    
+    
+    def update_psf_grid(self):
+        psf_marginal_h = torch.arange(-self.psf_pad, self.image_height + self.psf_pad)
+        psf_marginal_w = torch.arange(-self.psf_pad, self.image_width + self.psf_pad)
+        grid_h, grid_w = torch.meshgrid(psf_marginal_h, psf_marginal_w)
+        self.psf_grid = torch.stack([grid_h, grid_w], dim = -1)
     
     
     def psf(self, locs):
-        loc_h = locs[...,0].unsqueeze(-2).unsqueeze(-3)
-        loc_w = locs[...,1].unsqueeze(-2).unsqueeze(-3)
-        logpsf = (- (self.psf_marginal_h - loc_h)**2 - (self.psf_marginal_w - loc_w)**2) / (2 * self.psf_stdev**2)
-        psf = (logpsf - self.logpsfdenom).exp()
+        psf_grid_adjusted = self.psf_grid - (locs.unsqueeze(-2).unsqueeze(-3) - 0.5)
+        logpsf_padded = self.psf_density.log_prob(psf_grid_adjusted)
+        logpsf = logpsf_padded[...,
+                               self.psf_pad:(self.image_height + self.psf_pad),
+                               self.psf_pad:(self.image_width + self.psf_pad)]
+        psf = (logpsf - logpsf_padded.logsumexp([-1,-2], keepdim = True)).exp()
         
         return psf
     
@@ -50,7 +47,7 @@ class ImageModel(object):
         features = features.squeeze([0,1])
         
         psf = self.psf(locs)
-        rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(-1) + self.background
+        rate = (psf * features.unsqueeze(-1).unsqueeze(-2)).sum(-3) + self.background
         images = Poisson(rate).sample()
         
         return [counts, locs, features, images]
@@ -58,7 +55,7 @@ class ImageModel(object):
 
     def loglikelihood(self, tiled_image, locs, features):
         psf = self.psf(locs)
-        rate = (psf * features.unsqueeze(-2).unsqueeze(-3)).sum(-1) + self.background
+        rate = (psf * features.unsqueeze(-1).unsqueeze(-2)).sum(-3) + self.background
         rate = rearrange(rate, '... n h w -> ... h w n')
         loglik = Poisson(rate).log_prob(tiled_image.unsqueeze(-1)).sum([-2,-3])
 

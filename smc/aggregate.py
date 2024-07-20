@@ -88,7 +88,7 @@ class Aggregate(object):
                                   'numH numW dimH dimW t -> numH numW dimH (t dimW)')
         self.Prior.max_objects = self.Prior.max_objects * 2
         self.Prior.update_attrs()
-        self.ImageModel.update_attrs()
+        self.ImageModel.update_psf_grid()
         # counts
         self.counts = self.counts.unfold(axis, 2, 2).sum(3)
         # locs
