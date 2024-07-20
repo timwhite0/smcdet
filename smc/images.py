@@ -2,6 +2,7 @@ import torch
 import math
 from torch.distributions import Independent, Normal, Poisson
 from einops import rearrange
+import time
 
 class ImageModel(object):
     def __init__(self,
@@ -34,6 +35,7 @@ class ImageModel(object):
                                self.psf_pad:(self.image_height + self.psf_pad),
                                self.psf_pad:(self.image_width + self.psf_pad)]
         psf = logpsf.exp()
+        psf = rearrange(psf, 'numH numW n d dimH dimW -> numH numW dimH dimW n d')
         
         return psf
     
@@ -42,21 +44,21 @@ class ImageModel(object):
         catalogs = Prior.sample(num_catalogs = num_images)
         counts, locs, features = catalogs
         
+        psf = self.psf(locs)
+        rate = (psf * features.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
+        images = Poisson(rate).sample()
+        
         counts = counts.squeeze([0,1])
         locs = locs.squeeze([0,1])
         features = features.squeeze([0,1])
-        
-        psf = self.psf(locs)
-        rate = (psf * features.unsqueeze(-1).unsqueeze(-2)).sum(-3) + self.background
-        images = Poisson(rate).sample()
+        images = rearrange(images.squeeze([0,1]), 'dimH dimW n -> n dimH dimW')
         
         return [counts, locs, features, images]
 
 
     def loglikelihood(self, tiled_image, locs, features):
         psf = self.psf(locs)
-        rate = (psf * features.unsqueeze(-1).unsqueeze(-2)).sum(-3) + self.background
-        rate = rearrange(rate, '... n h w -> ... h w n')
+        rate = (psf * features.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
         loglik = Poisson(rate).log_prob(tiled_image.unsqueeze(-1)).sum([-2,-3])
 
         return loglik
