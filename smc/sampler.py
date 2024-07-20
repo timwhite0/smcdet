@@ -103,7 +103,7 @@ class SMCsampler(object):
         self.temperature = self.temperature + delta
     
     
-    def resample(self, method = "systematic"):    
+    def resample(self, method = "multinomial"):    
         for count_num in range(self.num_counts):
             weights = self.weights_intracount[:,:,count_num,:]
             
@@ -160,7 +160,7 @@ class SMCsampler(object):
         self.ESS = 1/(self.weights_intracount ** 2).sum(3)
 
 
-    def resample_intercount(self, method = "systematic"):
+    def resample_intercount(self, method = "multinomial"):
         if method == "multinomial":
             weights_intercount_flat = self.weights_intercount.flatten(0,1)
             resampled_index_flat = weights_intercount_flat.multinomial(self.num_catalogs, replacement = True)
