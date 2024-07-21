@@ -15,8 +15,8 @@ class ImageModel(object):
         self.background = background
         
         self.psf_pad = math.ceil(4 * psf_stdev)  # pad PSF by 4 stdevs
-        self.psf_density = Independent(Normal(torch.zeros(2),
-                                              self.psf_stdev * torch.ones(2)), 1)
+        self.psf_density = Independent(Normal(torch.zeros(1),
+                                              self.psf_stdev * torch.ones(1)), 1)
         self.update_psf_grid()
     
     
@@ -59,5 +59,5 @@ class ImageModel(object):
         psf = self.psf(locs)
         rate = (psf * features.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
         loglik = Poisson(rate).log_prob(tiled_image.unsqueeze(-1)).sum([-2,-3])
-
+        
         return loglik
