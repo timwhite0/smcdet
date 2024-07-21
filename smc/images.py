@@ -2,7 +2,6 @@ import torch
 import math
 from torch.distributions import Independent, Normal, Poisson
 from einops import rearrange
-import time
 
 class ImageModel(object):
     def __init__(self,
