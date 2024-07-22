@@ -1,5 +1,4 @@
 import torch
-import math
 from torch.distributions import Independent, Normal, Poisson
 from einops import rearrange
 
@@ -14,25 +13,21 @@ class ImageModel(object):
         self.psf_stdev = psf_stdev
         self.background = background
         
-        self.psf_pad = math.ceil(4 * psf_stdev)  # pad PSF by 4 stdevs
         self.psf_density = Independent(Normal(torch.zeros(1),
                                               self.psf_stdev * torch.ones(1)), 1)
         self.update_psf_grid()
     
     
     def update_psf_grid(self):
-        psf_marginal_h = torch.arange(-self.psf_pad, self.image_height + self.psf_pad)
-        psf_marginal_w = torch.arange(-self.psf_pad, self.image_width + self.psf_pad)
+        psf_marginal_h = torch.arange(0, self.image_height)
+        psf_marginal_w = torch.arange(0, self.image_width)
         grid_h, grid_w = torch.meshgrid(psf_marginal_h, psf_marginal_w, indexing = 'ij')
         self.psf_grid = torch.stack([grid_h, grid_w], dim = -1)
     
     
     def psf(self, locs):
         psf_grid_adjusted = self.psf_grid - (locs.unsqueeze(-2).unsqueeze(-3) - 0.5)
-        logpsf_padded = self.psf_density.log_prob(psf_grid_adjusted)
-        logpsf = logpsf_padded[...,
-                               self.psf_pad:(self.image_height + self.psf_pad),
-                               self.psf_pad:(self.image_width + self.psf_pad)]
+        logpsf = self.psf_density.log_prob(psf_grid_adjusted)
         psf = logpsf.exp()
         psf = rearrange(psf, 'numH numW n d dimH dimW -> numH numW dimH dimW n d')
         
