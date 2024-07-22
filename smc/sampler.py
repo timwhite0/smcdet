@@ -103,7 +103,7 @@ class SMCsampler(object):
         self.temperature = self.temperature + delta
     
     
-    def resample(self, method = "multinomial"):    
+    def resample(self, method = "multinomial"):
         for count_num in range(self.num_counts):
             weights = self.weights_intracount[:,:,count_num,:]
             
