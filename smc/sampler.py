@@ -45,6 +45,8 @@ class SMCsampler(object):
         # initialize temperature
         self.temperature_prev = torch.zeros(1)
         self.temperature = torch.zeros(1)
+        self.backup_temperature_seq = (2 ** (torch.arange(1, 21) / 20)) - 1
+        self.use_backup_temperature_seq = False
         
         # cache loglikelihood for tempering step
         self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.features)
@@ -61,8 +63,8 @@ class SMCsampler(object):
         
         # set ESS thresholds
         self.ESS = 1 / (self.weights_intracount ** 2).sum(3)
-        self.ESS_threshold_resampling = 0.5 * self.num_catalogs_per_count
-        self.ESS_threshold_tempering = 0.5 * self.num_catalogs_per_count
+        self.ESS_threshold_resampling = 0.75 * self.num_catalogs_per_count
+        self.ESS_threshold_tempering = 0.75 * self.num_catalogs_per_count
         
         self.has_run = False
 
@@ -82,25 +84,30 @@ class SMCsampler(object):
 
 
     def temper(self):
-        self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.features)
-        
-        solutions = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
-        
-        for h in range(self.num_tiles_per_side):
-            for w in range(self.num_tiles_per_side):
-                def func(delta):
-                    return self.tempering_objective(self.loglik[h,w], delta)
-                
-                if func(1 - self.temperature.item()) < 0:
-                    solutions[h,w] = brentq(func, 0.0, 1 - self.temperature.item(),
-                                            maxiter = 500, xtol = 1e-8, rtol = 1e-8)
-                else:
-                    solutions[h,w] = 1 - self.temperature.item()
-                
-        delta = solutions.min()
-        
         self.temperature_prev = self.temperature
-        self.temperature = self.temperature + delta
+        
+        if self.use_backup_temperature_seq is False:
+            self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.features)
+            solutions = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
+            
+            for h in range(self.num_tiles_per_side):
+                for w in range(self.num_tiles_per_side):
+                    def func(delta):
+                        return self.tempering_objective(self.loglik[h,w], delta)
+                    
+                    if func(1 - self.temperature_prev.item()) < 0:
+                        solutions[h,w] = brentq(func, 0.0, 1 - self.temperature_prev.item())
+                    else:
+                        solutions[h,w] = 1 - self.temperature_prev.item()
+            
+            delta = solutions.min()
+            self.temperature = self.temperature_prev + delta
+        elif self.use_backup_temperature_seq is True:
+            self.temperature = self.backup_temperature_seq[self.iter]
+        
+        if self.iter == 0 and self.temperature == 1:
+            self.use_backup_temperature_seq = True
+            self.temperature = self.backup_temperature_seq[self.iter]
     
     
     def resample(self, method = "multinomial"):
@@ -229,9 +236,7 @@ class SMCsampler(object):
     
     @property
     def posterior_mean_counts(self):
-        if self.has_run == False:
-            raise ValueError("Sampler hasn't been run yet.")
-        return self.counts.float().mean(2)
+        return (self.weights_intercount * self.counts).sum(-1)
     
     
     def summarize(self):
