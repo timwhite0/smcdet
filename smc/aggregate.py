@@ -12,8 +12,6 @@ class Aggregate(object):
                  features,
                  weights):
         self.Prior = deepcopy(Prior)
-        self.Prior.pad = 0
-        self.Prior.update_attrs()
         self.ImageModel = deepcopy(ImageModel)
         
         self.data = data
@@ -28,6 +26,23 @@ class Aggregate(object):
         
         self.log_density_children = self.compute_log_density()
         self.log_density_parents = None
+    
+    
+    def prune(self):
+        in_bounds = torch.all(
+            torch.logical_and(self.locs > 0,
+                              self.locs < torch.tensor((self.dimH, self.dimW))), dim = -1)
+        self.counts = in_bounds.sum(-1)
+        self.locs = in_bounds.unsqueeze(-1) * self.locs
+        self.features = in_bounds * self.features
+        
+        features_mask = (self.features != 0).int()
+        features_index = torch.sort(features_mask, dim = 3, descending = True)[1]
+        self.features = torch.gather(self.features, dim = 3, index = features_index)
+        
+        locs_mask = (self.locs != 0).int()
+        locs_index = torch.sort(locs_mask, dim = 3, descending = True)[1]
+        self.locs = torch.gather(self.locs, dim = 3, index = locs_index)
     
     
     def resample(self, method = "systematic", multiplier = 1):

@@ -63,8 +63,8 @@ class SMCsampler(object):
         
         # set ESS thresholds
         self.ESS = 1 / (self.weights_intracount ** 2).sum(3)
-        self.ESS_threshold_resampling = 0.75 * self.num_catalogs_per_count
-        self.ESS_threshold_tempering = 0.75 * self.num_catalogs_per_count
+        self.ESS_threshold_resampling = 0.5 * self.num_catalogs_per_count
+        self.ESS_threshold_tempering = 0.5 * self.num_catalogs_per_count
         
         self.has_run = False
 
@@ -105,7 +105,7 @@ class SMCsampler(object):
         elif self.use_backup_temperature_seq is True:
             self.temperature = self.backup_temperature_seq[self.iter]
         
-        if self.iter == 0 and self.temperature == 1:
+        if self.iter == 0 and self.temperature > 0.5:
             self.use_backup_temperature_seq = True
             self.temperature = self.backup_temperature_seq[self.iter]
     
@@ -188,21 +188,6 @@ class SMCsampler(object):
                 self.locs[h,w,:] = self.locs[h,w,resampled_index[h,w,:]]
                 self.features[h,w,:] = self.features[h,w,resampled_index[h,w,:]]
                 self.weights_intercount[h,w,:] = 1 / self.num_catalogs
-    
-    
-    def prune(self):
-        in_bounds = torch.all(torch.logical_and(self.locs > 0, self.locs < self.tile_dim), dim = 4)
-        self.counts = in_bounds.sum(3)
-        self.locs = in_bounds.unsqueeze(4) * self.locs
-        self.features = in_bounds * self.features
-        
-        features_mask = (self.features != 0).int()
-        features_index = torch.sort(features_mask, dim = 3, descending = True)[1]
-        self.features = torch.gather(self.features, dim = 3, index = features_index)
-        
-        locs_mask = (self.locs != 0).int()
-        locs_index = torch.sort(locs_mask, dim = 3, descending = True)[1]
-        self.locs = torch.gather(self.locs, dim = 3, index = locs_index)
         
         
     def run(self, print_progress = True):
@@ -226,7 +211,6 @@ class SMCsampler(object):
             self.update_weights()
         
         self.resample_intercount()
-        self.prune()
         
         self.has_run = True
         
