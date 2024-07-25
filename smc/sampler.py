@@ -110,7 +110,7 @@ class SMCsampler(object):
             self.temperature = self.backup_temperature_seq[self.iter]
     
     
-    def resample(self, method = "multinomial"):
+    def resample(self, method = "systematic"):
         for count_num in range(self.num_counts):
             weights = self.weights_intracount[:,:,count_num,:]
             
@@ -165,29 +165,6 @@ class SMCsampler(object):
         self.log_normalizing_constant = self.log_normalizing_constant + m + (s/self.num_catalogs).log()
         
         self.ESS = 1/(self.weights_intracount ** 2).sum(3)
-
-
-    def resample_intercount(self, method = "multinomial"):
-        if method == "multinomial":
-            weights_intercount_flat = self.weights_intercount.flatten(0,1)
-            resampled_index_flat = weights_intercount_flat.multinomial(self.num_catalogs, replacement = True)
-            resampled_index = resampled_index_flat.unflatten(0, (self.num_tiles_per_side, self.num_tiles_per_side))
-        elif method == "systematic":
-            resampled_index = torch.zeros_like(self.weights_intercount)
-            for h in range(self.num_tiles_per_side):
-                for w in range(self.num_tiles_per_side):
-                    u = (torch.arange(self.num_catalogs) + torch.rand([1])) / self.num_catalogs
-                    bins = self.weights_intercount[h,w].cumsum(0)
-                    resampled_index[h,w] = torch.bucketize(u, bins)
-        
-        resampled_index = resampled_index.int().clamp(min = 0, max = self.num_catalogs - 1)
-            
-        for h in range(self.num_tiles_per_side):
-            for w in range(self.num_tiles_per_side):
-                self.counts[h,w,:] = self.counts[h,w,resampled_index[h,w,:]]
-                self.locs[h,w,:] = self.locs[h,w,resampled_index[h,w,:]]
-                self.features[h,w,:] = self.features[h,w,resampled_index[h,w,:]]
-                self.weights_intercount[h,w,:] = 1 / self.num_catalogs
         
         
     def run(self, print_progress = True):
@@ -209,8 +186,6 @@ class SMCsampler(object):
             self.mutate()
             self.temper()
             self.update_weights()
-        
-        self.resample_intercount()
         
         self.has_run = True
         
