@@ -28,55 +28,6 @@ class Aggregate(object):
         self.log_density_parents = None
     
     
-    def drop_sources_from_overlap(self, axis):
-        if axis == 0:  # height axis
-            sources_to_keep_even = torch.logical_and(
-                self.locs[0::2,:,...,0] < self.dimH,
-                self.locs[0::2,:,...,0] != 0
-            )
-            self.counts[0::2,...] = sources_to_keep_even.sum(-1)
-            self.features[0::2,...] *= sources_to_keep_even
-            self.locs[0::2,...] *= sources_to_keep_even.unsqueeze(-1)
-            
-            sources_to_keep_odd = self.locs[1::2,:,...,0] > 0
-            self.counts[1::2,...] = sources_to_keep_odd.sum(-1)
-            self.features[1::2,...] *= sources_to_keep_odd
-            self.locs[1::2,...] *= sources_to_keep_odd.unsqueeze(-1)
-        elif axis == 1:  # width axis
-            sources_to_keep_even = torch.logical_and(
-                self.locs[:,0::2,...,1] < self.dimW,
-                self.locs[:,0::2,...,1] != 0
-            )
-            self.counts[:,0::2,...] = sources_to_keep_even.sum(-1)
-            self.features[:,0::2,...] *= sources_to_keep_even
-            self.locs[:,0::2,...] *= sources_to_keep_even.unsqueeze(-1)
-            
-            sources_to_keep_odd = self.locs[:,1::2,...,1] > 0
-            self.counts[:,1::2,...] = sources_to_keep_odd.sum(-1)
-            self.features[:,1::2,...] *= sources_to_keep_odd
-            self.locs[:,1::2,...] *= sources_to_keep_odd.unsqueeze(-1)
-    
-    
-    def prune(self):
-        in_bounds = torch.all(
-            torch.logical_and(self.locs > 0,
-                              self.locs < torch.tensor((self.dimH, self.dimW))),
-            dim = -1
-        )
-        
-        self.counts = in_bounds.sum(-1)
-        
-        self.locs = in_bounds.unsqueeze(-1) * self.locs
-        locs_mask = (self.locs != 0).int()
-        locs_index = torch.sort(locs_mask, dim = 3, descending = True)[1]
-        self.locs = torch.gather(self.locs, dim = 3, index = locs_index)
-        
-        self.features = in_bounds * self.features
-        features_mask = (self.features != 0).int()
-        features_index = torch.sort(features_mask, dim = 3, descending = True)[1]
-        self.features = torch.gather(self.features, dim = 3, index = features_index)
-    
-    
     def resample(self, method = "systematic", multiplier = 1):
         num = int(multiplier * self.counts.shape[-1])
         
@@ -122,6 +73,41 @@ class Aggregate(object):
         self.log_density_children = log_density_children
     
     
+    def compute_log_density(self):
+        logprior = self.Prior.log_prob(self.counts, self.locs, self.features)
+        loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.features)
+        return logprior + loglik
+    
+    
+    def drop_sources_from_overlap(self, axis):
+        if axis == 0:  # height axis
+            sources_to_keep_even = torch.logical_and(
+                self.locs[0::2,:,...,0] < self.dimH,
+                self.locs[0::2,:,...,0] != 0
+            )
+            self.counts[0::2,...] = sources_to_keep_even.sum(-1)
+            self.features[0::2,...] *= sources_to_keep_even
+            self.locs[0::2,...] *= sources_to_keep_even.unsqueeze(-1)
+            
+            sources_to_keep_odd = self.locs[1::2,:,...,0] > 0
+            self.counts[1::2,...] = sources_to_keep_odd.sum(-1)
+            self.features[1::2,...] *= sources_to_keep_odd
+            self.locs[1::2,...] *= sources_to_keep_odd.unsqueeze(-1)
+        elif axis == 1:  # width axis
+            sources_to_keep_even = torch.logical_and(
+                self.locs[:,0::2,...,1] < self.dimW,
+                self.locs[:,0::2,...,1] != 0
+            )
+            self.counts[:,0::2,...] = sources_to_keep_even.sum(-1)
+            self.features[:,0::2,...] *= sources_to_keep_even
+            self.locs[:,0::2,...] *= sources_to_keep_even.unsqueeze(-1)
+            
+            sources_to_keep_odd = self.locs[:,1::2,...,1] > 0
+            self.counts[:,1::2,...] = sources_to_keep_odd.sum(-1)
+            self.features[:,1::2,...] *= sources_to_keep_odd
+            self.locs[:,1::2,...] *= sources_to_keep_odd.unsqueeze(-1)
+    
+    
     def join(self, axis):
         if axis == 0:  # height axis
             self.numH = self.numH // 2
@@ -163,10 +149,24 @@ class Aggregate(object):
         self.log_density_children = self.log_density_children.unfold(axis, 2, 2).sum(3)
     
     
-    def compute_log_density(self):
-        logprior = self.Prior.log_prob(self.counts, self.locs, self.features)
-        loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.features)
-        return logprior + loglik
+    def prune(self):
+        in_bounds = torch.all(
+            torch.logical_and(self.locs > 0,
+                              self.locs < torch.tensor((self.dimH, self.dimW))),
+            dim = -1
+        )
+        
+        self.counts = in_bounds.sum(-1)
+        
+        self.locs = in_bounds.unsqueeze(-1) * self.locs
+        locs_mask = (self.locs != 0).int()
+        locs_index = torch.sort(locs_mask, dim = 3, descending = True)[1]
+        self.locs = torch.gather(self.locs, dim = 3, index = locs_index)
+        
+        self.features = in_bounds * self.features
+        features_mask = (self.features != 0).int()
+        features_index = torch.sort(features_mask, dim = 3, descending = True)[1]
+        self.features = torch.gather(self.features, dim = 3, index = features_index)
     
     
     def run(self):
@@ -186,6 +186,7 @@ class Aggregate(object):
 
         self.resample()
         self.prune()
+
 
     @property
     def ESS(self):
