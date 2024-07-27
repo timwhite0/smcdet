@@ -62,7 +62,7 @@ class SMCsampler(object):
         # set ESS thresholds
         self.ESS = 1 / (self.weights_intracount ** 2).sum(-1)
         self.ESS_threshold_resampling = 0.5 * self.num_catalogs_per_count
-        self.ESS_threshold_tempering = 0.5 * self.num_catalogs_per_count
+        self.ESS_threshold_tempering = 0.75 * self.num_catalogs_per_count
         
         self.has_run = False
 
@@ -131,7 +131,7 @@ class SMCsampler(object):
                     self.locs[h,w,lower:upper,:,:] = l[resampled_index[h,w,:],:,:]
                     self.features[h,w,lower:upper,:] = f[resampled_index[h,w,:],:]
                     
-            self.weights_intracount[:,:,count_num,:] = 1/self.num_catalogs_per_count
+            self.weights_intracount[:,:,count_num,:] = 1 / self.num_catalogs_per_count
             tmp_weights_intercount = self.weights_intercount[:,:,lower:upper].sum(2) / self.num_catalogs_per_count
             self.weights_intercount[:,:,lower:upper] = tmp_weights_intercount.unsqueeze(2).repeat(1, 1, self.num_catalogs_per_count)
     
@@ -152,10 +152,10 @@ class SMCsampler(object):
                                                           dim = 2), dim = 2).softmax(3)
         self.weights_intercount = self.weights_log_unnorm.softmax(2)
         
-        m = self.weights_log_unnorm.max(2).values
-        w = (self.weights_log_unnorm - m.unsqueeze(2)).exp()
-        s = w.sum(2)
-        self.log_normalizing_constant = self.log_normalizing_constant + m + (s/self.num_catalogs).log()
+        # m = self.weights_log_unnorm.max(2).values
+        # w = (self.weights_log_unnorm - m.unsqueeze(2)).exp()
+        # s = w.sum(2)
+        # self.log_normalizing_constant = self.log_normalizing_constant + m + (s/self.num_catalogs).log()
         
         self.ESS = 1/(self.weights_intracount ** 2).sum(3)
         
