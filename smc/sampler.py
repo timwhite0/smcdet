@@ -39,7 +39,8 @@ class SMCsampler(object):
                                  stratify_by_count = True,
                                  num_catalogs_per_count = self.num_catalogs_per_count)
         self.counts, self.locs, self.features = cats
-        self.features = self.features.clamp(min = self.MutationKernel.features_min)
+        self.features = self.features.clamp(min = self.MutationKernel.features_min,
+                                            max = self.MutationKernel.features_max) * (self.features != 0)
         
         # initialize temperature
         self.temperature_prev = torch.zeros(1)

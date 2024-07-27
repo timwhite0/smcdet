@@ -7,7 +7,8 @@ class MetropolisHastings(object):
                  num_iters,
                  locs_stdev,
                  features_stdev,
-                 features_min):
+                 features_min,
+                 features_max):
         self.num_iters = num_iters
         
         self.locs_stdev = torch.tensor(locs_stdev)
@@ -16,7 +17,7 @@ class MetropolisHastings(object):
         
         self.features_stdev = features_stdev * torch.ones(1)
         self.features_min = features_min * torch.ones(1)
-        self.features_max = torch.inf * torch.ones(1)
+        self.features_max = features_max * torch.ones(1)
     
     
     def run(self, counts, locs, features, temperature, log_target):
@@ -34,14 +35,14 @@ class MetropolisHastings(object):
             log_numerator = log_target(counts, locs_proposed, features_proposed, temperature)
             log_numerator += (TruncatedDiagonalMVN(locs_proposed, self.locs_stdev, self.locs_min,
                                                    self.locs_max).log_prob(locs_prev) * count_indicator.unsqueeze(4)).sum([3,4])
-            log_numerator += (TruncatedDiagonalMVN(features_proposed, self.features_stdev, self.features_min,
+            log_numerator += (TruncatedDiagonalMVN(features_proposed + self.features_min * (features_proposed == 0), self.features_stdev, self.features_min,
                                                    self.features_max).log_prob(features_prev + self.features_min * (features_prev == 0)) * count_indicator).sum(3)
 
             if iter == 0:
                 log_denominator = log_target(counts, locs_prev, features_prev, temperature)
                 log_denominator += (TruncatedDiagonalMVN(locs_prev, self.locs_stdev, self.locs_min,
                                                          self.locs_max).log_prob(locs_proposed) * count_indicator.unsqueeze(4)).sum([3,4])
-                log_denominator += (TruncatedDiagonalMVN(features_prev, self.features_stdev, self.features_min,
+                log_denominator += (TruncatedDiagonalMVN(features_prev + self.features_min * (features_prev == 0), self.features_stdev, self.features_min,
                                                          self.features_max).log_prob(features_proposed + self.features_min * (features_proposed == 0)) * count_indicator).sum(3)
 
             alpha = (log_numerator - log_denominator).exp().clamp(max = 1)

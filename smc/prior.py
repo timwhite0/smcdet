@@ -86,5 +86,4 @@ class StarPrior(PointProcessPrior):
     def log_prob(self, counts, locs, features):
         log_prior = super().log_prob(counts, locs)
         
-        # add fudge to dummy vals before log_prob because the empty slots in features are zeros
         return log_prior + (self.feature_prior.log_prob(features) * self.count_indicator).sum(-1)
