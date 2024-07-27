@@ -24,10 +24,8 @@ class SMCsampler(object):
         self.Prior = Prior
         self.ImageModel = ImageModel
         self.MutationKernel = MutationKernel
-        self.MutationKernel.locs_lower = self.Prior.loc_prior.low
-        self.MutationKernel.locs_upper = self.Prior.loc_prior.high
-        self.MutationKernel.features_lower = 0.0
-        self.MutationKernel.features_upper = torch.inf
+        self.MutationKernel.locs_min = self.Prior.loc_prior.low
+        self.MutationKernel.locs_max = self.Prior.loc_prior.high
         
         self.max_objects = self.Prior.max_objects
         self.num_counts = self.max_objects + 1  # num_counts = |{0,1,2,...,max_objects}|
@@ -41,6 +39,7 @@ class SMCsampler(object):
                                  stratify_by_count = True,
                                  num_catalogs_per_count = self.num_catalogs_per_count)
         self.counts, self.locs, self.features = cats
+        self.features = self.features.clamp(min = self.MutationKernel.features_min)
         
         # initialize temperature
         self.temperature_prev = torch.zeros(1)

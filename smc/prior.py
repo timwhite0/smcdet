@@ -60,13 +60,13 @@ class PointProcessPrior(object):
 class StarPrior(PointProcessPrior):
     def __init__(self,
                  *args,
-                 flux_scale,
-                 flux_shape,
+                 flux_mean,
+                 flux_stdev,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        self.flux_scale = flux_scale
-        self.flux_shape = flux_shape
-        self.feature_prior = Normal(self.flux_scale, self.flux_shape)
+        self.flux_mean = flux_mean
+        self.flux_stdev = flux_stdev
+        self.feature_prior = Normal(self.flux_mean, self.flux_stdev)
     
     def sample(self,
                num_catalogs = 1,
@@ -77,7 +77,7 @@ class StarPrior(PointProcessPrior):
                                       stratify_by_count, num_catalogs_per_count)
         
         features = self.feature_prior.sample([num_tiles_per_side, num_tiles_per_side,
-                                              self.num, self.max_objects]).clamp(min = 0.0)
+                                              self.num, self.max_objects])
         features *= self.count_indicator
         
         return [counts, locs, features]
@@ -87,5 +87,4 @@ class StarPrior(PointProcessPrior):
         log_prior = super().log_prob(counts, locs)
         
         # add fudge to dummy vals before log_prob because the empty slots in features are zeros
-        fudge = 0 # for Pareto fluxes: self.feature_prior.scale
-        return log_prior + (self.feature_prior.log_prob(features + fudge * (features == 0)) * self.count_indicator).sum(-1)
+        return log_prior + (self.feature_prior.log_prob(features) * self.count_indicator).sum(-1)
