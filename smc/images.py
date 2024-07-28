@@ -42,6 +42,25 @@ class ImageModel(object):
         rate = (psf * features.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
         images = Poisson(rate).sample()
         
+        if Prior.pad > 0:
+            in_bounds = torch.all(
+                torch.logical_and(locs > 0,
+                                  locs < torch.tensor((self.image_height, self.image_width))),
+                dim = -1
+            )
+            
+            counts = in_bounds.sum(-1)
+            
+            locs = in_bounds.unsqueeze(-1) * locs
+            locs_mask = (locs != 0).int()
+            locs_index = torch.sort(locs_mask, dim = 3, descending = True)[1]
+            locs = torch.gather(locs, dim = 3, index = locs_index)
+            
+            features = in_bounds * features
+            features_mask = (features != 0).int()
+            features_index = torch.sort(features_mask, dim = 3, descending = True)[1]
+            features = torch.gather(features, dim = 3, index = features_index)
+        
         counts = counts.squeeze([0,1])
         locs = locs.squeeze([0,1])
         features = features.squeeze([0,1])
