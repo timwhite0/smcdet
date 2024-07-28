@@ -1,7 +1,6 @@
 import torch
 from torch.distributions import Uniform
 from smc.distributions import TruncatedDiagonalMVN
-from line_profiler import profile
 
 class MetropolisHastings(object):
     def __init__(self,
@@ -20,7 +19,7 @@ class MetropolisHastings(object):
         self.features_min = features_min * torch.ones(1)
         self.features_max = features_max * torch.ones(1)
     
-    @profile
+    
     def run(self, counts, locs, features, temperature, log_target):
         count_indicator = torch.arange(1, counts.max().item() + 1).unsqueeze(0) <= counts.unsqueeze(3)
         

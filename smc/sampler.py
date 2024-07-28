@@ -80,7 +80,7 @@ class SMCsampler(object):
 
         return (log_numerator - log_denominator).exp() - self.ESS_threshold_tempering
 
-
+    
     def temper(self):
         self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.features)
         
@@ -96,7 +96,8 @@ class SMCsampler(object):
                         return self.tempering_objective(self.loglik[h,w,lower:upper], delta)
                     
                     if func(1 - self.temperature.item()) < 0:
-                        solutions[h,w,c] = brentq(func, 0.0, 1 - self.temperature.item())
+                        solutions[h,w,c] = brentq(func, 0.0, 1 - self.temperature.item(),
+                                                  xtol = 1e-6, rtol = 1e-6)
                     else:
                         solutions[h,w,c] = 1 - self.temperature.item()
         
