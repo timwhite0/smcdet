@@ -57,12 +57,12 @@ class SMCsampler(object):
                                                           self.num_catalogs_per_count,
                                                           dim = 2), dim = 2).softmax(3)
         self.weights_intercount = self.weights_log_unnorm.softmax(2)
-        self.log_normalizing_constant = (self.weights_log_unnorm.exp().mean(2)).log()
+        # self.log_normalizing_constant = (self.weights_log_unnorm.exp().mean(2)).log()
         
         # set ESS thresholds
         self.ESS = 1 / (self.weights_intracount ** 2).sum(-1)
         self.ESS_threshold_resampling = 0.5 * self.num_catalogs_per_count
-        self.ESS_threshold_tempering = 0.75 * self.num_catalogs_per_count
+        self.ESS_threshold_tempering = 0.5 * self.num_catalogs_per_count
         
         self.has_run = False
 
@@ -84,18 +84,21 @@ class SMCsampler(object):
     def temper(self):
         self.loglik = self.ImageModel.loglikelihood(self.tiled_image, self.locs, self.features)
         
-        solutions = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
+        solutions = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, self.num_counts)
         
-        for h in range(self.num_tiles_per_side):
-            for w in range(self.num_tiles_per_side):
-                def func(delta):
-                    return self.tempering_objective(self.loglik[h,w], delta)
-                
-                if func(1 - self.temperature.item()) < 0:
-                    solutions[h,w] = brentq(func, 0.0, 1 - self.temperature.item(),
-                                            maxiter = 500, xtol = 1e-8, rtol = 1e-8)
-                else:
-                    solutions[h,w] = 1 - self.temperature.item()
+        for c in range(self.num_counts):
+            lower = c * self.num_catalogs_per_count
+            upper = (c + 1) * self.num_catalogs_per_count
+            
+            for h in range(self.num_tiles_per_side):
+                for w in range(self.num_tiles_per_side):
+                    def func(delta):
+                        return self.tempering_objective(self.loglik[h,w,lower:upper], delta)
+                    
+                    if func(1 - self.temperature.item()) < 0:
+                        solutions[h,w] = brentq(func, 0.0, 1 - self.temperature.item())
+                    else:
+                        solutions[h,w] = 1 - self.temperature.item()
         
         delta = solutions.min()
         
