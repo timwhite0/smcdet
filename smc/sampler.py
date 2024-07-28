@@ -96,9 +96,9 @@ class SMCsampler(object):
                         return self.tempering_objective(self.loglik[h,w,lower:upper], delta)
                     
                     if func(1 - self.temperature.item()) < 0:
-                        solutions[h,w] = brentq(func, 0.0, 1 - self.temperature.item())
+                        solutions[h,w,c] = brentq(func, 0.0, 1 - self.temperature.item())
                     else:
-                        solutions[h,w] = 1 - self.temperature.item()
+                        solutions[h,w,c] = 1 - self.temperature.item()
         
         delta = solutions.min()
         
