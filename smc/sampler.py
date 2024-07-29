@@ -61,7 +61,7 @@ class SMCsampler(object):
         
         # set ESS thresholds
         self.ESS = 1 / (self.weights_intracount ** 2).sum(-1)
-        self.ESS_threshold_tempering = 0.3 * self.num_catalogs_per_count
+        self.ESS_threshold_tempering = 0.5 * self.num_catalogs_per_count
         
         self.has_run = False
 
@@ -100,7 +100,7 @@ class SMCsampler(object):
                     else:
                         solutions[h,w,c] = 1 - self.temperature.item()
         
-        delta = solutions.min()
+        delta = solutions.quantile(0.1, dim=-1).min()
         
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + delta
