@@ -61,8 +61,7 @@ class SMCsampler(object):
         
         # set ESS thresholds
         self.ESS = 1 / (self.weights_intracount ** 2).sum(-1)
-        self.ESS_threshold_resampling = 0.5 * self.num_catalogs_per_count
-        self.ESS_threshold_tempering = 0.25 * self.num_catalogs_per_count
+        self.ESS_threshold_tempering = 0.3 * self.num_catalogs_per_count
         
         self.has_run = False
 
