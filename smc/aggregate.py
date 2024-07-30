@@ -124,11 +124,11 @@ class Aggregate(object):
             self.data = rearrange(self.data.unfold(axis, 2, 2),
                                   'numH numW dimH dimW t -> numH numW dimH (t dimW)')
         
-        self.Prior.max_objects = self.Prior.max_objects * 2
+        self.counts = self.counts.unfold(axis, 2, 2).sum(3)
+        
+        self.Prior.max_objects = self.counts.max().int().item()  # max objects detected
         self.Prior.update_attrs()
         self.ImageModel.update_psf_grid()
-        
-        self.counts = self.counts.unfold(axis, 2, 2).sum(3)
         
         locs_unfolded = self.locs.unfold(axis, 2, 2)
         locs_unfolded_mask = (locs_unfolded != 0).int()
@@ -138,13 +138,13 @@ class Aggregate(object):
                               'numH numW N M l t -> numH numW N (t M) l')
         locs_mask = (self.locs != 0).int()
         locs_index = torch.sort(locs_mask, dim = 3, descending = True)[1]
-        self.locs = torch.gather(self.locs, dim = 3, index = locs_index)
+        self.locs = torch.gather(self.locs, dim = 3, index = locs_index)[...,:self.Prior.max_objects,:]
         
         self.features = rearrange(self.features.unfold(axis, 2, 2),
                                   'numH numW N M t -> numH numW N (t M)')
         features_mask = (self.features != 0).int()
         features_index = torch.sort(features_mask, dim = 3, descending = True)[1]
-        self.features = torch.gather(self.features, dim = 3, index = features_index)
+        self.features = torch.gather(self.features, dim = 3, index = features_index)[...,:self.Prior.max_objects]
         
         self.log_density_children = self.log_density_children.unfold(axis, 2, 2).sum(3)
     
