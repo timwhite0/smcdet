@@ -12,7 +12,7 @@ from smc.kernel import MetropolisHastings
 from smc.aggregate import Aggregate
 
 import torch
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:6" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 torch.set_default_device(device)
 
@@ -47,7 +47,7 @@ imagemodel = ImageModel(image_height = image_height,
                         psf_stdev = 1.5,
                         background = 100000)
 
-mh = MetropolisHastings(num_iters = 100,
+mh = MetropolisHastings(num_iters = 75,
                         locs_stdev = 0.1,
                         features_stdev = 1000,
                         features_min = 50000,
@@ -57,7 +57,7 @@ mh = MetropolisHastings(num_iters = 100,
 ##############################################
 ### CREATE EMPTY TENSORS TO STORE RESULTS
 
-num_catalogs_per_count = 1000
+num_catalogs_per_count = 2500
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 runtime = torch.zeros([num_images])
@@ -111,19 +111,12 @@ for i in range(num_images):
     print(f'num iters = {num_iters[i]}')
     print(f'posterior mean count = {agg.posterior_mean_counts.item()}')
     print(f'posterior mean total flux = {agg.posterior_mean_total_flux.item()}\n\n\n')
+    
+    torch.save(runtime[:(i+1)].cpu(), "results/runtime.pt")
+    torch.save(num_iters[:(i+1)].cpu(), "results/num_iters.pt")
+    torch.save(counts[:(i+1)].cpu(), "results/counts.pt")
+    torch.save(locs[:(i+1)].cpu(), "results/locs.pt")
+    torch.save(fluxes[:(i+1)].cpu(), "results/fluxes.pt")
+
+print('Done!')
 ##############################################
-
-##############################################
-### SAVE RESULTS
-
-torch.save(runtime.cpu(), "results/runtime.pt")
-torch.save(num_iters.cpu(), "results/num_iters.pt")
-torch.save(counts.cpu(), "results/counts.pt")
-torch.save(locs.cpu(), "results/locs.pt")
-torch.save(fluxes.cpu(), "results/fluxes.pt")
-##############################################
-
-
-
-
-
