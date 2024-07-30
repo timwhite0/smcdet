@@ -112,11 +112,11 @@ for i in range(num_images):
     print(f'posterior mean count = {agg.posterior_mean_counts.item()}')
     print(f'posterior mean total flux = {agg.posterior_mean_total_flux.item()}\n\n\n')
     
-    torch.save(runtime[:(i+1)].cpu(), "results/runtime.pt")
-    torch.save(num_iters[:(i+1)].cpu(), "results/num_iters.pt")
-    torch.save(counts[:(i+1)].cpu(), "results/counts.pt")
-    torch.save(locs[:(i+1)].cpu(), "results/locs.pt")
-    torch.save(fluxes[:(i+1)].cpu(), "results/fluxes.pt")
+    torch.save(runtime[:(i+1)].cpu(), "results/smc/runtime.pt")
+    torch.save(num_iters[:(i+1)].cpu(), "results/smc/num_iters.pt")
+    torch.save(counts[:(i+1)].cpu(), "results/smc/counts.pt")
+    torch.save(locs[:(i+1)].cpu(), "results/smc/locs.pt")
+    torch.save(fluxes[:(i+1)].cpu(), "results/smc/fluxes.pt")
 
 print('Done!')
 ##############################################
