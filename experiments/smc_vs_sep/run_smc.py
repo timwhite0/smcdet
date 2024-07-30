@@ -47,7 +47,7 @@ imagemodel = ImageModel(image_height = image_height,
                         psf_stdev = 1.5,
                         background = 100000)
 
-mh = MetropolisHastings(num_iters = 75,
+mh = MetropolisHastings(num_iters = 100,
                         locs_stdev = 0.1,
                         features_stdev = 1000,
                         features_min = 50000,
