@@ -43,7 +43,7 @@ class Aggregate(object):
                     bins = self.weights[h,w].cumsum(0)
                     resampled_index[h,w] = torch.bucketize(u, bins)
         
-        resampled_index = resampled_index.int()
+        resampled_index = resampled_index.int().clamp(min = 0, max = num - 1)
         
         if multiplier >= 1:
             counts = repeat(torch.zeros_like(self.counts), 'numH numW N -> numH numW (m N)', m = multiplier)
