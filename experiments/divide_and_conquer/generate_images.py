@@ -29,7 +29,7 @@ imagemodel = ImageModel(image_height = image_dim,
                         background = background)
 
 # prior
-max_objects = 16
+max_objects = 12
 flux_mean = 80000
 flux_stdev = 15000
 pad = 2
