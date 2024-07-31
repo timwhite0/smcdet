@@ -126,7 +126,7 @@ class Aggregate(object):
         
         self.counts = self.counts.unfold(axis, 2, 2).sum(3)
         
-        self.Prior.max_objects = self.counts.max().int().item()  # max objects detected
+        self.Prior.max_objects = max(1, self.counts.max().int().item())  # max objects detected
         self.Prior.update_attrs()
         self.ImageModel.update_psf_grid()
         
