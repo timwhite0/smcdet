@@ -121,11 +121,11 @@ for b in range(num_batches):
         print(f'posterior mean count = {agg.posterior_mean_counts.item()}')
         print(f'posterior mean total flux = {agg.posterior_mean_total_flux.item()}\n\n\n')
         
-    torch.save(runtime.cpu(), f"results/runtime_{b}.pt")
-    torch.save(num_iters.cpu(), f"results/num_iters_{b}.pt")
-    torch.save(counts.cpu(), f"results/counts_{b}.pt")
-    torch.save(locs.cpu(), f"results/locs_{b}.pt")
-    torch.save(fluxes.cpu(), f"results/fluxes_{b}.pt")
+    torch.save(runtime.cpu(), f"results/smc/runtime_{b}.pt")
+    torch.save(num_iters.cpu(), f"results/smc/num_iters_{b}.pt")
+    torch.save(counts.cpu(), f"results/smc/counts_{b}.pt")
+    torch.save(locs.cpu(), f"results/smc/locs_{b}.pt")
+    torch.save(fluxes.cpu(), f"results/smc/fluxes_{b}.pt")
 
 print('Done!')
 ##############################################
