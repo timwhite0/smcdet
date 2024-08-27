@@ -19,7 +19,9 @@ class Aggregate(object):
         self.numH, self.numW, self.dimH, self.dimW = self.data.shape
         self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).int().item()
 
-        self.log_density_children = self.compute_log_density()
+        self.log_density_children = self.log_density(
+            self.data, self.counts, self.locs, self.features
+        )
         self.log_density_parents = None
 
     def resample(self, method="systematic", multiplier=1):
@@ -90,9 +92,9 @@ class Aggregate(object):
         self.weights = weights
         self.log_density_children = log_density_children
 
-    def compute_log_density(self):
-        logprior = self.Prior.log_prob(self.counts, self.locs, self.features)
-        loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.features)
+    def log_density(self, data, counts, locs, features):
+        logprior = self.Prior.log_prob(counts, locs, features)
+        loglik = self.ImageModel.loglikelihood(data, locs, features)
         return logprior + loglik
 
     def drop_sources_from_overlap(self, axis):
@@ -196,7 +198,9 @@ class Aggregate(object):
     def run(self):
         for level in range(self.num_aggregation_levels):
             self.resample()
-            self.log_density_children = self.compute_log_density()
+            self.log_density_children = self.log_density(
+                self.data, self.counts, self.locs, self.features
+            )
 
             if level % 2 == 0:
                 self.drop_sources_from_overlap(axis=0)
@@ -205,7 +209,9 @@ class Aggregate(object):
                 self.drop_sources_from_overlap(axis=1)
                 self.join(axis=1)
 
-            self.log_density_parents = self.compute_log_density()
+            self.log_density_parents = self.log_density(
+                self.data, self.counts, self.locs, self.features
+            )
             self.weights = (
                 self.log_density_parents - self.log_density_children
             ).softmax(-1)
