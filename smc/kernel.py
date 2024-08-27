@@ -18,7 +18,7 @@ class MetropolisHastings(object):
         self.features_min = features_min * torch.ones(1)
         self.features_max = features_max * torch.ones(1)
 
-    def run(self, counts, locs, features, temperature, log_target):
+    def run(self, data, counts, locs, features, temperature, log_target):
         count_indicator = torch.arange(1, counts.max().item() + 1).unsqueeze(
             0
         ) <= counts.unsqueeze(3)
@@ -41,7 +41,7 @@ class MetropolisHastings(object):
             )
 
             log_numerator = log_target(
-                counts, locs_proposed, features_proposed, temperature
+                data, counts, locs_proposed, features_proposed, temperature
             )
             log_numerator += (
                 TruncatedDiagonalMVN(
@@ -61,7 +61,7 @@ class MetropolisHastings(object):
 
             if iter == 0:
                 log_denominator = log_target(
-                    counts, locs_prev, features_prev, temperature
+                    data, counts, locs_prev, features_prev, temperature
                 )
                 log_denominator += (
                     TruncatedDiagonalMVN(
