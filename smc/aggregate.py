@@ -5,9 +5,12 @@ from einops import rearrange, repeat
 
 
 class Aggregate(object):
-    def __init__(self, Prior, ImageModel, data, counts, locs, features, weights):
+    def __init__(
+        self, Prior, ImageModel, MutationKernel, data, counts, locs, features, weights
+    ):
         self.Prior = deepcopy(Prior)
         self.ImageModel = deepcopy(ImageModel)
+        self.MutationKernel = deepcopy(MutationKernel)
 
         self.data = data
         self.counts = counts
@@ -92,10 +95,20 @@ class Aggregate(object):
         self.weights = weights
         self.log_density_children = log_density_children
 
-    def log_density(self, data, counts, locs, features):
+    def log_density(self, data, counts, locs, features, temperature=1):
         logprior = self.Prior.log_prob(counts, locs, features)
         loglik = self.ImageModel.loglikelihood(data, locs, features)
-        return logprior + loglik
+        return logprior + temperature * loglik
+
+    def mutate(self):
+        self.locs, self.features = self.MutationKernel.run(
+            self.data,
+            self.counts,
+            self.locs,
+            self.features,
+            1,
+            self.log_density,
+        )
 
     def drop_sources_from_overlap(self, axis):
         if axis == 0:  # height axis
@@ -150,6 +163,8 @@ class Aggregate(object):
         )  # max objects detected
         self.Prior.update_attrs()
         self.ImageModel.update_psf_grid()
+        self.MutationKernel.locs_min = self.Prior.loc_prior.low
+        self.MutationKernel.locs_max = self.Prior.loc_prior.high
 
         locs_unfolded = self.locs.unfold(axis, 2, 2)
         locs_unfolded_mask = (locs_unfolded != 0).int()
@@ -198,6 +213,7 @@ class Aggregate(object):
     def run(self):
         for level in range(self.num_aggregation_levels):
             self.resample()
+            self.mutate()
             self.log_density_children = self.log_density(
                 self.data, self.counts, self.locs, self.features
             )

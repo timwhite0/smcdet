@@ -19,7 +19,7 @@ class MetropolisHastings(object):
         self.features_max = features_max * torch.ones(1)
 
     def run(self, data, counts, locs, features, temperature, log_target):
-        count_indicator = torch.arange(1, counts.max().item() + 1).unsqueeze(
+        count_indicator = torch.arange(1, locs.shape[-2] + 1).unsqueeze(
             0
         ) <= counts.unsqueeze(3)
 
