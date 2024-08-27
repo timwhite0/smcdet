@@ -1,24 +1,23 @@
 #!/usr/bin/env python
 
 ##############################################
-### SETUP
+# SETUP
 
 import sys
 
-sys.path.append("../../")
-
-from smc.prior import StarPrior
-from smc.images import ImageModel
-
 import torch
 
+from smc.images import ImageModel
+from smc.prior import StarPrior
+
+sys.path.append("../../")
 device = torch.device("cuda:4" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 torch.set_default_device(device)
 ##############################################
 
 ##############################################
-### DEFINE AN IMAGE MODEL AND A PRIOR
+# DEFINE AN IMAGE MODEL AND A PRIOR
 
 # image attributes
 image_dim = 32
@@ -48,7 +47,7 @@ prior = StarPrior(
 ##############################################
 
 ##############################################
-### GENERATE IMAGES
+# GENERATE IMAGES
 
 torch.manual_seed(1)
 

@@ -1,5 +1,6 @@
 import torch
 from torch.distributions import Uniform
+
 from smc.distributions import TruncatedDiagonalMVN
 
 

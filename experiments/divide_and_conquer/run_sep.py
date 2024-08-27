@@ -1,23 +1,22 @@
 #!/usr/bin/env python
 
 ##############################################
-### SETUP
+# SETUP
 
+import time
+
+import sep
 import torch
+from torch.nn.functional import pad
 
 device = torch.device("cuda:7" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 torch.set_default_device(device)
 
-import time
-import sep
-
-from torch.nn.functional import pad
-
 ##############################################
 
 ##############################################
-### LOAD IN IMAGES AND CATALOGS
+# LOAD IN IMAGES AND CATALOGS
 
 images = torch.load("data/images.pt").to(device)
 true_counts = torch.load("data/true_counts.pt").to(device)
@@ -34,7 +33,7 @@ max_detections = 100
 ##############################################
 
 ##############################################
-### SELECT SEP HYPERPARAMETERS VIA GRID SEARCH
+# SELECT SEP HYPERPARAMETERS VIA GRID SEARCH
 
 print("Starting grid search...\n")
 
@@ -115,7 +114,7 @@ print(f"clean_param = {clean_param_best}\n")
 ##############################################
 
 ##############################################
-### RUN SEP
+# RUN SEP
 
 print("Running SEP...\n")
 
@@ -175,7 +174,7 @@ fluxes = torch.gather(fluxes, dim=1, index=fluxes_index)
 ##############################################
 
 ##############################################
-### SAVE RESULTS
+# SAVE RESULTS
 
 print("Saving results...\n")
 

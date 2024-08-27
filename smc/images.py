@@ -1,6 +1,6 @@
 import torch
-from torch.distributions import Independent, Normal, Poisson
 from einops import rearrange
+from torch.distributions import Independent, Normal, Poisson
 
 
 class ImageModel(object):

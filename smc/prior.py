@@ -1,5 +1,5 @@
 import torch
-from torch.distributions import Normal, Uniform, Categorical
+from torch.distributions import Categorical, Normal, Uniform
 
 
 class PointProcessPrior(object):

@@ -1,5 +1,5 @@
 import torch
-from torch.distributions import Normal, Distribution
+from torch.distributions import Distribution, Normal
 
 
 class TruncatedDiagonalMVN(Distribution):

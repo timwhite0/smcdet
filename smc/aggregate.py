@@ -1,6 +1,7 @@
+from copy import deepcopy
+
 import torch
 from einops import rearrange, repeat
-from copy import deepcopy
 
 
 class Aggregate(object):

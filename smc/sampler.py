@@ -162,10 +162,10 @@ class SMCsampler(object):
                 self.weights_intercount[:, :, lower:upper].sum(2)
                 / self.num_catalogs_per_count
             )
-            self.weights_intercount[
-                :, :, lower:upper
-            ] = tmp_weights_intercount.unsqueeze(2).repeat(
-                1, 1, self.num_catalogs_per_count
+            self.weights_intercount[:, :, lower:upper] = (
+                tmp_weights_intercount.unsqueeze(2).repeat(
+                    1, 1, self.num_catalogs_per_count
+                )
             )
 
     def mutate(self):
@@ -196,7 +196,9 @@ class SMCsampler(object):
         # m = self.weights_log_unnorm.max(2).values
         # w = (self.weights_log_unnorm - m.unsqueeze(2)).exp()
         # s = w.sum(2)
-        # self.log_normalizing_constant = self.log_normalizing_constant + m + (s/self.num_catalogs).log()
+        # self.log_normalizing_constant = (
+        #   self.log_normalizing_constant + m + (s/self.num_catalogs).log()
+        # )
 
         self.ESS = 1 / (self.weights_intracount**2).sum(3)
 
@@ -230,7 +232,7 @@ class SMCsampler(object):
         return (self.weights_intercount * self.counts).sum(-1)
 
     def summarize(self):
-        if self.has_run == False:
+        if self.has_run is False:
             raise ValueError("Sampler hasn't been run yet.")
 
         print(f"summary\nnumber of SMC iterations: {self.iter}")

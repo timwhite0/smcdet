@@ -1,29 +1,28 @@
 #!/usr/bin/env python
 
 ##############################################
-### SETUP
+# SETUP
 
 import sys
-
-sys.path.append("/home/twhit/smc_object_detection/")
-from smc.sampler import SMCsampler
-from smc.prior import StarPrior
-from smc.images import ImageModel
-from smc.kernel import MetropolisHastings
-from smc.aggregate import Aggregate
+import time
 
 import torch
 
+from smc.aggregate import Aggregate
+from smc.images import ImageModel
+from smc.kernel import MetropolisHastings
+from smc.prior import StarPrior
+from smc.sampler import SMCsampler
+
+sys.path.append("/home/twhit/smc_object_detection/")
 device = torch.device("cuda:4" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 torch.set_default_device(device)
 
-import time
-
 ##############################################
 
 ##############################################
-### LOAD IN IMAGES AND CATALOGS
+# LOAD IN IMAGES AND CATALOGS
 
 images = torch.load("data/images.pt").to(device)
 true_counts = torch.load("data/true_counts.pt").to(device)
@@ -36,7 +35,7 @@ image_width = images.shape[2]
 ##############################################
 
 ##############################################
-### SPECIFY TILE-LEVEL IMAGE MODEL, PRIOR, AND MUTATION KERNEL
+# SPECIFY TILE-LEVEL IMAGE MODEL, PRIOR, AND MUTATION KERNEL
 
 tile_dim = 8
 
@@ -63,7 +62,7 @@ mh = MetropolisHastings(
 ##############################################
 
 ##############################################
-### SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
+# SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
 num_catalogs_per_count = 2500
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
@@ -73,7 +72,7 @@ num_batches = num_images // batch_size
 ##############################################
 
 ##############################################
-### RUN SMC
+# RUN SMC
 
 torch.manual_seed(1)
 
