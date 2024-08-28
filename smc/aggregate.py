@@ -5,9 +5,12 @@ from einops import rearrange, repeat
 
 
 class Aggregate(object):
-    def __init__(self, Prior, ImageModel, data, counts, locs, features, weights):
+    def __init__(
+        self, Prior, ImageModel, MutationKernel, data, counts, locs, features, weights
+    ):
         self.Prior = deepcopy(Prior)
         self.ImageModel = deepcopy(ImageModel)
+        self.MutationKernel = deepcopy(MutationKernel)
 
         self.data = data
         self.counts = counts
@@ -19,7 +22,9 @@ class Aggregate(object):
         self.numH, self.numW, self.dimH, self.dimW = self.data.shape
         self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).int().item()
 
-        self.log_density_children = self.compute_log_density()
+        self.log_density_children = self.log_density(
+            self.data, self.counts, self.locs, self.features
+        )
         self.log_density_parents = None
 
     def resample(self, method="systematic", multiplier=1):
@@ -90,10 +95,20 @@ class Aggregate(object):
         self.weights = weights
         self.log_density_children = log_density_children
 
-    def compute_log_density(self):
-        logprior = self.Prior.log_prob(self.counts, self.locs, self.features)
-        loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.features)
-        return logprior + loglik
+    def log_density(self, data, counts, locs, features, temperature=1):
+        logprior = self.Prior.log_prob(counts, locs, features)
+        loglik = self.ImageModel.loglikelihood(data, locs, features)
+        return logprior + temperature * loglik
+
+    def mutate(self):
+        self.locs, self.features = self.MutationKernel.run(
+            self.data,
+            self.counts,
+            self.locs,
+            self.features,
+            1,
+            self.log_density,
+        )
 
     def drop_sources_from_overlap(self, axis):
         if axis == 0:  # height axis
@@ -148,6 +163,8 @@ class Aggregate(object):
         )  # max objects detected
         self.Prior.update_attrs()
         self.ImageModel.update_psf_grid()
+        self.MutationKernel.locs_min = self.Prior.loc_prior.low
+        self.MutationKernel.locs_max = self.Prior.loc_prior.high
 
         locs_unfolded = self.locs.unfold(axis, 2, 2)
         locs_unfolded_mask = (locs_unfolded != 0).int()
@@ -196,7 +213,10 @@ class Aggregate(object):
     def run(self):
         for level in range(self.num_aggregation_levels):
             self.resample()
-            self.log_density_children = self.compute_log_density()
+            self.mutate()
+            self.log_density_children = self.log_density(
+                self.data, self.counts, self.locs, self.features
+            )
 
             if level % 2 == 0:
                 self.drop_sources_from_overlap(axis=0)
@@ -205,7 +225,9 @@ class Aggregate(object):
                 self.drop_sources_from_overlap(axis=1)
                 self.join(axis=1)
 
-            self.log_density_parents = self.compute_log_density()
+            self.log_density_parents = self.log_density(
+                self.data, self.counts, self.locs, self.features
+            )
             self.weights = (
                 self.log_density_parents - self.log_density_children
             ).softmax(-1)

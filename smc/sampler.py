@@ -72,9 +72,9 @@ class SMCsampler(object):
 
         self.has_run = False
 
-    def log_target(self, counts, locs, features, temperature):
+    def log_target(self, data, counts, locs, features, temperature):
         logprior = self.Prior.log_prob(counts, locs, features)
-        loglik = self.ImageModel.loglikelihood(self.tiled_image, locs, features)
+        loglik = self.ImageModel.loglikelihood(data, locs, features)
 
         return logprior + temperature * loglik
 
@@ -170,6 +170,7 @@ class SMCsampler(object):
 
     def mutate(self):
         self.locs, self.features = self.MutationKernel.run(
+            self.tiled_image,
             self.counts,
             self.locs,
             self.features,
