@@ -11,6 +11,8 @@ class Aggregate(object):
         self.Prior = deepcopy(Prior)
         self.ImageModel = deepcopy(ImageModel)
         self.MutationKernel = deepcopy(MutationKernel)
+        self.MutationKernel.locs_min = self.Prior.loc_prior.low
+        self.MutationKernel.locs_max = self.Prior.loc_prior.high
 
         self.data = data
         self.counts = counts
