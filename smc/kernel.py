@@ -26,7 +26,7 @@ class MetropolisHastings(object):
         locs_prev = locs
         features_prev = features
 
-        for _ in range(self.num_iters):
+        for iter in range(self.num_iters):
             locs_proposed = TruncatedDiagonalMVN(
                 locs_prev, self.locs_stdev, self.locs_min, self.locs_max
             ).sample() * counts_mask.unsqueeze(4)
@@ -60,9 +60,10 @@ class MetropolisHastings(object):
             ).sum(3)
             log_numerator = log_num_target + log_num_qlocs + log_num_qfeatures
 
-            log_denom_target = log_target(
-                data, counts, locs_prev, features_prev, temperature
-            )
+            if iter == 0:
+                log_denom_target = log_target(
+                    data, counts, locs_prev, features_prev, temperature
+                )
             log_denom_qlocs = (
                 TruncatedDiagonalMVN(
                     locs_prev, self.locs_stdev, self.locs_min, self.locs_max
@@ -91,6 +92,9 @@ class MetropolisHastings(object):
 
             accept_f = (accept).unsqueeze(3)
             features_new = features_proposed * (accept_f) + features_prev * (~accept_f)
+
+            # cache denominator loglik for next iteration
+            log_denom_target = log_num_target * (accept) + log_denom_target * (~accept)
 
             locs_prev = locs_new
             features_prev = features_new
