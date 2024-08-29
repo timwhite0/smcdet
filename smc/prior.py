@@ -50,25 +50,25 @@ class PointProcessPrior(object):
                 num_tiles_per_side, num_tiles_per_side, self.num
             )
 
-        self.count_indicator = torch.arange(1, self.num_counts).unsqueeze(
+        self.counts_mask = torch.arange(1, self.num_counts).unsqueeze(
             0
         ) <= counts.unsqueeze(3)
         locs = self.loc_prior.sample(
             [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
         )
-        locs *= self.count_indicator.unsqueeze(4)
+        locs *= self.counts_mask.unsqueeze(4)
 
         return [counts, locs]
 
     # we define log_prob for stratify_by_count = True, to be used within SMCsampler
     def log_prob(self, counts, locs):
-        self.count_indicator = torch.arange(1, self.num_counts).unsqueeze(
+        self.counts_mask = torch.arange(1, self.num_counts).unsqueeze(
             0
         ) <= counts.unsqueeze(-1)
 
         log_prior = self.count_prior.log_prob(counts)
         log_prior += (
-            self.loc_prior.log_prob(locs) * self.count_indicator.unsqueeze(-1)
+            self.loc_prior.log_prob(locs) * self.counts_mask.unsqueeze(-1)
         ).sum([-1, -2])
 
         return log_prior
@@ -96,7 +96,7 @@ class StarPrior(PointProcessPrior):
         features = self.feature_prior.sample(
             [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
         )
-        features *= self.count_indicator
+        features *= self.counts_mask
 
         return [counts, locs, features]
 
@@ -105,5 +105,5 @@ class StarPrior(PointProcessPrior):
         log_prior = super().log_prob(counts, locs)
 
         return log_prior + (
-            self.feature_prior.log_prob(features) * self.count_indicator
+            self.feature_prior.log_prob(features) * self.counts_mask
         ).sum(-1)
