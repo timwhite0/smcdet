@@ -26,7 +26,7 @@ class MetropolisHastings(object):
         locs_prev = locs
         features_prev = features
 
-        for iter in range(self.num_iters):
+        for _ in range(self.num_iters):
             locs_proposed = TruncatedDiagonalMVN(
                 locs_prev, self.locs_stdev, self.locs_min, self.locs_max
             ).sample() * count_indicator.unsqueeze(4)
