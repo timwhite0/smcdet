@@ -40,16 +40,16 @@ class MetropolisHastings(object):
                 * count_indicator
             )
 
-            log_numerator = log_target(
+            log_num_target = log_target(
                 data, counts, locs_proposed, features_proposed, temperature
             )
-            log_numerator += (
+            log_num_qlocs = (
                 TruncatedDiagonalMVN(
                     locs_proposed, self.locs_stdev, self.locs_min, self.locs_max
                 ).log_prob(locs_prev)
                 * count_indicator.unsqueeze(4)
             ).sum([3, 4])
-            log_numerator += (
+            log_num_qfeatures = (
                 TruncatedDiagonalMVN(
                     features_proposed + self.features_min * (features_proposed == 0),
                     self.features_stdev,
@@ -58,17 +58,18 @@ class MetropolisHastings(object):
                 ).log_prob(features_prev + self.features_min * (features_prev == 0))
                 * count_indicator
             ).sum(3)
+            log_numerator = log_num_target + log_num_qlocs + log_num_qfeatures
 
-            log_denominator = log_target(
+            log_denom_target = log_target(
                 data, counts, locs_prev, features_prev, temperature
             )
-            log_denominator += (
+            log_denom_qlocs = (
                 TruncatedDiagonalMVN(
                     locs_prev, self.locs_stdev, self.locs_min, self.locs_max
                 ).log_prob(locs_proposed)
                 * count_indicator.unsqueeze(4)
             ).sum([3, 4])
-            log_denominator += (
+            log_denom_qfeatures = (
                 TruncatedDiagonalMVN(
                     features_prev + self.features_min * (features_prev == 0),
                     self.features_stdev,
@@ -79,17 +80,19 @@ class MetropolisHastings(object):
                 )
                 * count_indicator
             ).sum(3)
+            log_denominator = log_denom_target + log_denom_qlocs + log_denom_qfeatures
 
             alpha = (log_numerator - log_denominator).exp().clamp(max=1)
             prob = Uniform(torch.zeros_like(counts), torch.ones_like(counts)).sample()
             accept = prob <= alpha
 
-            locs_new = locs_proposed * (accept).unsqueeze(3).unsqueeze(
-                4
-            ) + locs_prev * (~accept).unsqueeze(3).unsqueeze(4)
-            features_new = features_proposed * (accept).unsqueeze(3) + features_prev * (
-                ~accept
-            ).unsqueeze(3)
+            accept_locs = (accept).unsqueeze(3).unsqueeze(4)
+            locs_new = locs_proposed * (accept_locs) + locs_prev * (~accept_locs)
+
+            accept_feats = (accept).unsqueeze(3)
+            features_new = features_proposed * (accept_feats) + features_prev * (
+                ~accept_feats
+            )
 
             locs_prev = locs_new
             features_prev = features_new
