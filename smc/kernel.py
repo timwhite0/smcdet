@@ -59,27 +59,26 @@ class MetropolisHastings(object):
                 * count_indicator
             ).sum(3)
 
-            if iter == 0:
-                log_denominator = log_target(
-                    data, counts, locs_prev, features_prev, temperature
+            log_denominator = log_target(
+                data, counts, locs_prev, features_prev, temperature
+            )
+            log_denominator += (
+                TruncatedDiagonalMVN(
+                    locs_prev, self.locs_stdev, self.locs_min, self.locs_max
+                ).log_prob(locs_proposed)
+                * count_indicator.unsqueeze(4)
+            ).sum([3, 4])
+            log_denominator += (
+                TruncatedDiagonalMVN(
+                    features_prev + self.features_min * (features_prev == 0),
+                    self.features_stdev,
+                    self.features_min,
+                    self.features_max,
+                ).log_prob(
+                    features_proposed + self.features_min * (features_proposed == 0)
                 )
-                log_denominator += (
-                    TruncatedDiagonalMVN(
-                        locs_prev, self.locs_stdev, self.locs_min, self.locs_max
-                    ).log_prob(locs_proposed)
-                    * count_indicator.unsqueeze(4)
-                ).sum([3, 4])
-                log_denominator += (
-                    TruncatedDiagonalMVN(
-                        features_prev + self.features_min * (features_prev == 0),
-                        self.features_stdev,
-                        self.features_min,
-                        self.features_max,
-                    ).log_prob(
-                        features_proposed + self.features_min * (features_proposed == 0)
-                    )
-                    * count_indicator
-                ).sum(3)
+                * count_indicator
+            ).sum(3)
 
             alpha = (log_numerator - log_denominator).exp().clamp(max=1)
             prob = Uniform(torch.zeros_like(counts), torch.ones_like(counts)).sample()
@@ -91,9 +90,6 @@ class MetropolisHastings(object):
             features_new = features_proposed * (accept).unsqueeze(3) + features_prev * (
                 ~accept
             ).unsqueeze(3)
-
-            # Cache log_denominator for next iteration
-            log_denominator = log_numerator * (accept) + log_denominator * (~accept)
 
             locs_prev = locs_new
             features_prev = features_new
