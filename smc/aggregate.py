@@ -182,10 +182,6 @@ class Aggregate(object):
                 self.log_density_children,
             ) = res
 
-            self.log_density_children = self.log_density(
-                self.data, self.counts, self.locs, self.features
-            )
-
             if level % 2 == 0:
                 self.counts, self.locs, self.features = self.drop_sources_from_overlap(
                     0, self.counts, self.locs, self.features
