@@ -79,13 +79,13 @@ class Aggregate(object):
             locs[0::2, ...] *= sources_to_keep_even.unsqueeze(-1)
             features[0::2, ...] *= sources_to_keep_even
 
-            sources_to_keep_odd = self.locs[1::2, :, ..., 0] > 0
+            sources_to_keep_odd = locs[1::2, :, ..., 0] > 0
             counts[1::2, ...] = sources_to_keep_odd.sum(-1)
             locs[1::2, ...] *= sources_to_keep_odd.unsqueeze(-1)
             features[1::2, ...] *= sources_to_keep_odd
         elif axis == 1:  # width axis
             sources_to_keep_even = torch.logical_and(
-                self.locs[:, 0::2, ..., 1] < self.dimW, self.locs[:, 0::2, ..., 1] != 0
+                locs[:, 0::2, ..., 1] < self.dimW, locs[:, 0::2, ..., 1] != 0
             )
             counts[:, 0::2, ...] = sources_to_keep_even.sum(-1)
             locs[:, 0::2, ...] *= sources_to_keep_even.unsqueeze(-1)
