@@ -195,8 +195,8 @@ class Aggregate(object):
         features_index = torch.sort(features_mask, dim=3, descending=True)[1]
         self.features = torch.gather(self.features, dim=3, index=features_index)
 
-    def run(self):
-        for level in range(self.num_aggregation_levels):
+    def merge(self, level, method="naive"):
+        if method == "naive":
             self.resample()
 
             self.log_density_children = self.log_density(
@@ -209,6 +209,12 @@ class Aggregate(object):
             elif level % 2 != 0:
                 self.drop_sources_from_overlap(axis=1)
                 self.join(axis=1)
+        elif method == "lw_mixture":
+            print("Not yet implemented.")
+
+    def run(self):
+        for level in range(self.num_aggregation_levels):
+            self.merge(level)
 
             self.log_density_parents = self.log_density(
                 self.data, self.counts, self.locs, self.features
