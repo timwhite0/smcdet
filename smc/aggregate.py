@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 
 
 class Aggregate(object):
@@ -24,7 +24,7 @@ class Aggregate(object):
         )
         self.log_density_parents = None
 
-    def resample(self, method="systematic", multiplier=1):
+    def get_resampled_index(self, method="systematic", multiplier=1):
         num = int(multiplier * self.counts.shape[-1])
 
         if method == "multinomial":
@@ -39,42 +39,19 @@ class Aggregate(object):
                     bins = self.weights[h, w].cumsum(0)
                     resampled_index[h, w] = torch.bucketize(u, bins)
 
-        resampled_index = resampled_index.int().clamp(min=0, max=num - 1)
+        return resampled_index.int().clamp(min=0, max=num - 1)
 
-        if multiplier >= 1:
-            counts = repeat(
-                torch.zeros_like(self.counts),
-                "numH numW N -> numH numW (m N)",
-                m=multiplier,
-            )
-            locs = repeat(
-                torch.zeros_like(self.locs),
-                "numH numW N ... -> numH numW (m N) ...",
-                m=multiplier,
-            )
-            features = repeat(
-                torch.zeros_like(self.features),
-                "numH numW N ... -> numH numW (m N) ...",
-                m=multiplier,
-            )
-            weights = repeat(
-                torch.zeros_like(self.weights),
-                "numH numW N -> numH numW (m N)",
-                m=multiplier,
-            )
-            log_density_children = repeat(
-                torch.zeros_like(self.log_density_children),
-                "numH numW N -> numH numW (m N)",
-                m=multiplier,
-            )
-        if multiplier < 1:
-            counts = torch.zeros_like(self.counts)[:, :, :num]
-            locs = torch.zeros_like(self.locs)[:, :, :num, ...]
-            features = torch.zeros_like(self.features)[:, :, :num, ...]
-            weights = torch.zeros_like(self.weights)[:, :, :num]
-            log_density_children = torch.zeros_like(self.log_density_children)[
-                :, :, :num
-            ]
+    def apply_resampled_index(self, resampled_index):
+        num = resampled_index.shape[-1]
+
+        numH = self.features.shape[0]
+        numW = self.features.shape[1]
+        max_objects = self.features.shape[-1]
+        counts = torch.zeros(numH, numW, num)
+        locs = torch.zeros(numH, numW, num, max_objects, 2)
+        features = torch.zeros(numH, numW, num, max_objects)
+        weights = torch.zeros(numH, numW, num)
+        log_density_children = torch.zeros(numH, numW, num)
 
         for h in range(self.numH):
             for w in range(self.numW):
@@ -197,7 +174,8 @@ class Aggregate(object):
 
     def merge(self, level, method="naive"):
         if method == "naive":
-            self.resample()
+            index = self.get_resampled_index()
+            self.apply_resampled_index(index)
 
             self.log_density_children = self.log_density(
                 self.data, self.counts, self.locs, self.features
@@ -223,7 +201,8 @@ class Aggregate(object):
                 self.log_density_parents - self.log_density_children
             ).softmax(-1)
 
-        self.resample()
+        index = self.get_resampled_index()
+        self.apply_resampled_index(index)
         self.prune()
 
     @property
