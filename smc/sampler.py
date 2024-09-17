@@ -11,6 +11,7 @@ class SMCsampler(object):
         ImageModel,
         MutationKernel,
         num_catalogs_per_count,
+        ess_threshold,
         max_smc_iters,
     ):
         self.image = image
@@ -67,8 +68,8 @@ class SMCsampler(object):
         # self.log_normalizing_constant = (self.weights_log_unnorm.exp().mean(2)).log()
 
         # set ESS thresholds
-        self.ESS = 1 / (self.weights_intracount**2).sum(-1)
-        self.ESS_threshold_tempering = 0.75 * self.num_catalogs_per_count
+        self.ess = 1 / (self.weights_intracount**2).sum(-1)
+        self.ess_threshold = ess_threshold
 
         self.has_run = False
 
@@ -82,7 +83,7 @@ class SMCsampler(object):
         log_numerator = 2 * ((delta * loglikelihood).logsumexp(0))
         log_denominator = (2 * delta * loglikelihood).logsumexp(0)
 
-        return (log_numerator - log_denominator).exp() - self.ESS_threshold_tempering
+        return (log_numerator - log_denominator).exp() - self.ess_threshold
 
     def temper(self):
         self.loglik = self.ImageModel.loglikelihood(
