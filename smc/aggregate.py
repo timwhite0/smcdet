@@ -186,24 +186,19 @@ class Aggregate(object):
     def merge(self, level):
         if self.merge_method == "naive":
             index = self.get_resampled_index(self.weights, 1)
-            res = self.apply_resampled_index(
+            cs, ls, fs, ws = self.apply_resampled_index(
                 index, self.counts, self.locs, self.features
             )
-            self.counts, self.locs, self.features, self.weights = res
 
             if level % 2 == 0:
-                self.counts, self.locs, self.features = self.drop_sources_from_overlap(
-                    0, self.counts, self.locs, self.features
-                )
+                cs, ls, fs = self.drop_sources_from_overlap(0, cs, ls, fs)
                 self.data, self.counts, self.locs, self.features = self.join(
-                    0, self.data, self.counts, self.locs, self.features
+                    0, self.data, cs, ls, fs
                 )
             elif level % 2 != 0:
-                self.counts, self.locs, self.features = self.drop_sources_from_overlap(
-                    1, self.counts, self.locs, self.features
-                )
+                cs, ls, fs = self.drop_sources_from_overlap(1, cs, ls, fs)
                 self.data, self.counts, self.locs, self.features = self.join(
-                    1, self.data, self.counts, self.locs, self.features
+                    1, self.data, cs, ls, fs
                 )
         elif self.merge_method == "lw_mixture":
             index = self.get_resampled_index(self.weights, self.merge_multiplier)
@@ -222,7 +217,6 @@ class Aggregate(object):
             ws = ld.softmax(-1)
 
             index = self.get_resampled_index(ws, 1 / self.merge_multiplier)
-
             res = self.apply_resampled_index(index, cs, ls, fs)
             self.counts, self.locs, self.features, self.weights = res
 
