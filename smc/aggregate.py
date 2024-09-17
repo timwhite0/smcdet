@@ -19,11 +19,6 @@ class Aggregate(object):
         self.numH, self.numW, self.dimH, self.dimW = self.data.shape
         self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).int().item()
 
-        self.log_density_children = self.log_density(
-            self.data, self.counts, self.locs, self.features
-        )
-        self.log_density_parents = None
-
     def get_resampled_index(self, weights, method="systematic", multiplier=1):
         num = int(multiplier * weights.shape[-1])
 
@@ -41,9 +36,7 @@ class Aggregate(object):
 
         return resampled_index.int().clamp(min=0, max=num - 1)
 
-    def apply_resampled_index(
-        self, resampled_index, counts, locs, features, log_density_children
-    ):
+    def apply_resampled_index(self, resampled_index, counts, locs, features):
         num = resampled_index.shape[-1]
         numH = features.shape[0]
         numW = features.shape[1]
@@ -52,7 +45,6 @@ class Aggregate(object):
         ls = torch.zeros(numH, numW, num, max_objects, 2)
         fs = torch.zeros(numH, numW, num, max_objects)
         ws = torch.zeros(numH, numW, num)
-        ldc = torch.zeros(numH, numW, num)
 
         for h in range(self.numH):
             for w in range(self.numW):
@@ -60,9 +52,8 @@ class Aggregate(object):
                 ls[h, w, :] = locs[h, w, resampled_index[h, w, :]]
                 fs[h, w, :] = features[h, w, resampled_index[h, w, :]]
                 ws[h, w, :] = 1 / num
-                ldc[h, w, :] = log_density_children[h, w, resampled_index[h, w, :]]
 
-        return cs, ls, fs, ws, ldc
+        return cs, ls, fs, ws
 
     def log_density(self, data, counts, locs, features, temperature=1):
         logprior = self.Prior.log_prob(counts, locs, features)
@@ -97,7 +88,7 @@ class Aggregate(object):
 
         return counts, locs, features
 
-    def join(self, axis, data, counts, locs, features, log_density_children):
+    def join(self, axis, data, counts, locs, features):
         if axis == 0:  # height axis
             self.numH = self.numH // 2
             self.dimH = self.dimH * 2
@@ -143,9 +134,7 @@ class Aggregate(object):
             ..., : self.Prior.max_objects
         ]
 
-        ldc = log_density_children.unfold(axis, 2, 2).sum(3)
-
-        return dat, cs, ls, fs, ldc
+        return dat, cs, ls, fs
 
     def prune(self):
         in_bounds = torch.all(
@@ -171,99 +160,55 @@ class Aggregate(object):
         if method == "naive":
             index = self.get_resampled_index(self.weights)
             res = self.apply_resampled_index(
-                index, self.counts, self.locs, self.features, self.log_density_children
+                index, self.counts, self.locs, self.features
             )
-            (
-                self.counts,
-                self.locs,
-                self.features,
-                self.weights,
-                self.log_density_children,
-            ) = res
+            self.counts, self.locs, self.features, self.weights = res
 
             if level % 2 == 0:
                 self.counts, self.locs, self.features = self.drop_sources_from_overlap(
                     0, self.counts, self.locs, self.features
                 )
-                (
-                    self.data,
-                    self.counts,
-                    self.locs,
-                    self.features,
-                    self.log_density_children,
-                ) = self.join(
-                    0,
-                    self.data,
-                    self.counts,
-                    self.locs,
-                    self.features,
-                    self.log_density_children,
+                self.data, self.counts, self.locs, self.features = self.join(
+                    0, self.data, self.counts, self.locs, self.features
                 )
             elif level % 2 != 0:
                 self.counts, self.locs, self.features = self.drop_sources_from_overlap(
                     1, self.counts, self.locs, self.features
                 )
-                (
-                    self.data,
-                    self.counts,
-                    self.locs,
-                    self.features,
-                    self.log_density_children,
-                ) = self.join(
-                    1,
-                    self.data,
-                    self.counts,
-                    self.locs,
-                    self.features,
-                    self.log_density_children,
+                self.data, self.counts, self.locs, self.features = self.join(
+                    1, self.data, self.counts, self.locs, self.features
                 )
         elif method == "lw_mixture":
             index = self.get_resampled_index(self.weights, multiplier=5)
-            cs, ls, fs, ws, ldc = self.apply_resampled_index(
-                index, self.counts, self.locs, self.features, self.log_density_children
+            cs, ls, fs, ws = self.apply_resampled_index(
+                index, self.counts, self.locs, self.features
             )
 
             if level % 2 == 0:
                 cs, ls, fs = self.drop_sources_from_overlap(0, cs, ls, fs)
-                self.data, cs, ls, fs, ldc = self.join(0, self.data, cs, ls, fs, ldc)
+                self.data, cs, ls, fs = self.join(0, self.data, cs, ls, fs)
             elif level % 2 != 0:
                 cs, ls, fs = self.drop_sources_from_overlap(1, cs, ls, fs)
-                self.data, cs, ls, fs, ldc = self.join(1, self.data, cs, ls, fs, ldc)
+                self.data, cs, ls, fs = self.join(1, self.data, cs, ls, fs)
 
-            ldp = self.log_density(self.data, cs, ls, fs)
-            ws = (ldp - ldc).softmax(-1)
+            ld = self.log_density(self.data, cs, ls, fs)
+            ws = ld.softmax(-1)
 
             index = self.get_resampled_index(ws, multiplier=0.2)
-            (
-                self.counts,
-                self.locs,
-                self.features,
-                self.weights,
-                self.log_density_children,
-            ) = self.apply_resampled_index(index, cs, ls, fs, ldc)
+
+            res = self.apply_resampled_index(index, cs, ls, fs)
+            self.counts, self.locs, self.features, self.weights = res
 
     def run(self):
         for level in range(self.num_aggregation_levels):
             self.merge(level, method="lw_mixture")
 
-            self.log_density_parents = self.log_density(
-                self.data, self.counts, self.locs, self.features
-            )
-            self.weights = (
-                self.log_density_parents - self.log_density_children
-            ).softmax(-1)
+            ld = self.log_density(self.data, self.counts, self.locs, self.features)
+            self.weights = ld.softmax(-1)
 
         index = self.get_resampled_index(self.weights)
-        res = self.apply_resampled_index(
-            index, self.counts, self.locs, self.features, self.log_density_children
-        )
-        (
-            self.counts,
-            self.locs,
-            self.features,
-            self.weights,
-            self.log_density_children,
-        ) = res
+        res = self.apply_resampled_index(index, self.counts, self.locs, self.features)
+        self.counts, self.locs, self.features, self.weights = res
 
         self.prune()
 
