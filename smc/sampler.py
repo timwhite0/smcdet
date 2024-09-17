@@ -12,6 +12,7 @@ class SMCsampler(object):
         MutationKernel,
         num_catalogs_per_count,
         ess_threshold,
+        resample_method,
         max_smc_iters,
     ):
         self.image = image
@@ -33,6 +34,12 @@ class SMCsampler(object):
         self.num_counts = self.max_objects + 1  # num_counts = |{0,1,2,...,max_objects}|
         self.num_catalogs_per_count = num_catalogs_per_count
         self.num_catalogs = self.num_counts * self.num_catalogs_per_count
+
+        if resample_method not in {"multinomial", "systematic"}:
+            raise ValueError(
+                "resample_method must be either multinomial or systematic."
+            )
+        self.resample_method = resample_method
 
         self.max_smc_iters = max_smc_iters
 
@@ -118,11 +125,11 @@ class SMCsampler(object):
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + delta
 
-    def resample(self, method="systematic"):
+    def resample(self):
         for count_num in range(self.num_counts):
             weights = self.weights_intracount[:, :, count_num, :]
 
-            if method == "multinomial":
+            if self.resample_method == "multinomial":
                 weights_intracount_flat = weights.flatten(0, 1)
                 resampled_index_flat = weights_intracount_flat.multinomial(
                     self.num_catalogs_per_count, replacement=True
@@ -130,7 +137,7 @@ class SMCsampler(object):
                 resampled_index = resampled_index_flat.unflatten(
                     0, (self.num_tiles_per_side, self.num_tiles_per_side)
                 )
-            elif method == "systematic":
+            elif self.resample_method == "systematic":
                 resampled_index = torch.zeros_like(weights)
                 for h in range(self.num_tiles_per_side):
                     for w in range(self.num_tiles_per_side):

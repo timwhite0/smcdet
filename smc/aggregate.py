@@ -5,7 +5,19 @@ from einops import rearrange
 
 
 class Aggregate(object):
-    def __init__(self, Prior, ImageModel, data, counts, locs, features, weights):
+    def __init__(
+        self,
+        Prior,
+        ImageModel,
+        data,
+        counts,
+        locs,
+        features,
+        weights,
+        resample_method,
+        merge_method,
+        merge_multiplier,
+    ):
         self.Prior = deepcopy(Prior)
         self.ImageModel = deepcopy(ImageModel)
 
@@ -19,14 +31,29 @@ class Aggregate(object):
         self.numH, self.numW, self.dimH, self.dimW = self.data.shape
         self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).int().item()
 
-    def get_resampled_index(self, weights, method="systematic", multiplier=1):
+        if resample_method not in {"multinomial", "systematic"}:
+            raise ValueError(
+                "resample_method must be either multinomial or systematic."
+            )
+        self.resample_method = resample_method
+
+        if merge_method not in {"naive", "lw_mixture"}:
+            raise ValueError("merge_method must be either naive or lw_mixture.")
+        self.merge_method = merge_method
+
+        if merge_method == "naive":
+            self.merge_multiplier = 1.0
+        elif merge_method == "lw_mixture":
+            self.merge_multiplier = float(merge_multiplier)
+
+    def get_resampled_index(self, weights, multiplier):
         num = int(multiplier * weights.shape[-1])
 
-        if method == "multinomial":
+        if self.resample_method == "multinomial":
             weights_flat = weights.flatten(0, 1)
             resampled_index_flat = weights_flat.multinomial(num, replacement=True)
             resampled_index = resampled_index_flat.unflatten(0, (self.numH, self.numW))
-        elif method == "systematic":
+        elif self.resample_method == "systematic":
             resampled_index = torch.zeros([self.numH, self.numW, num])
             for h in range(self.numH):
                 for w in range(self.numW):
@@ -156,9 +183,9 @@ class Aggregate(object):
         features_index = torch.sort(features_mask, dim=3, descending=True)[1]
         self.features = torch.gather(self.features, dim=3, index=features_index)
 
-    def merge(self, level, method="naive"):
-        if method == "naive":
-            index = self.get_resampled_index(self.weights)
+    def merge(self, level):
+        if self.merge_method == "naive":
+            index = self.get_resampled_index(self.weights, 1)
             res = self.apply_resampled_index(
                 index, self.counts, self.locs, self.features
             )
@@ -178,8 +205,8 @@ class Aggregate(object):
                 self.data, self.counts, self.locs, self.features = self.join(
                     1, self.data, self.counts, self.locs, self.features
                 )
-        elif method == "lw_mixture":
-            index = self.get_resampled_index(self.weights, multiplier=5)
+        elif self.merge_method == "lw_mixture":
+            index = self.get_resampled_index(self.weights, self.merge_multiplier)
             cs, ls, fs, ws = self.apply_resampled_index(
                 index, self.counts, self.locs, self.features
             )
@@ -194,19 +221,19 @@ class Aggregate(object):
             ld = self.log_density(self.data, cs, ls, fs)
             ws = ld.softmax(-1)
 
-            index = self.get_resampled_index(ws, multiplier=0.2)
+            index = self.get_resampled_index(ws, 1 / self.merge_multiplier)
 
             res = self.apply_resampled_index(index, cs, ls, fs)
             self.counts, self.locs, self.features, self.weights = res
 
     def run(self):
         for level in range(self.num_aggregation_levels):
-            self.merge(level, method="lw_mixture")
+            self.merge(level)
 
             ld = self.log_density(self.data, self.counts, self.locs, self.features)
             self.weights = ld.softmax(-1)
 
-        index = self.get_resampled_index(self.weights)
+        index = self.get_resampled_index(self.weights, 1)
         res = self.apply_resampled_index(index, self.counts, self.locs, self.features)
         self.counts, self.locs, self.features, self.weights = res
 
