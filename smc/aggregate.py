@@ -1,18 +1,25 @@
 from copy import deepcopy
 
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 
 
 class Aggregate(object):
     def __init__(
-        self, Prior, ImageModel, MutationKernel, data, counts, locs, features, weights
+        self,
+        Prior,
+        ImageModel,
+        data,
+        counts,
+        locs,
+        features,
+        weights,
+        resample_method,
+        merge_method,
+        merge_multiplier,
     ):
         self.Prior = deepcopy(Prior)
         self.ImageModel = deepcopy(ImageModel)
-        self.MutationKernel = deepcopy(MutationKernel)
-        self.MutationKernel.locs_min = self.Prior.loc_prior.low
-        self.MutationKernel.locs_max = self.Prior.loc_prior.high
 
         self.data = data
         self.counts = counts
@@ -24,128 +31,98 @@ class Aggregate(object):
         self.numH, self.numW, self.dimH, self.dimW = self.data.shape
         self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).int().item()
 
-        self.log_density_children = self.log_density(
-            self.data, self.counts, self.locs, self.features
-        )
-        self.log_density_parents = None
+        if resample_method not in {"multinomial", "systematic"}:
+            raise ValueError(
+                "resample_method must be either multinomial or systematic."
+            )
+        self.resample_method = resample_method
 
-    def resample(self, method="systematic", multiplier=1):
-        num = int(multiplier * self.counts.shape[-1])
+        if merge_method not in {"naive", "lw_mixture"}:
+            raise ValueError("merge_method must be either naive or lw_mixture.")
+        self.merge_method = merge_method
 
-        if method == "multinomial":
-            weights_flat = self.weights.flatten(0, 1)
+        if merge_method == "naive":
+            self.merge_multiplier = 1.0
+        elif merge_method == "lw_mixture":
+            self.merge_multiplier = float(merge_multiplier)
+
+    def get_resampled_index(self, weights, multiplier):
+        num = int(multiplier * weights.shape[-1])
+
+        if self.resample_method == "multinomial":
+            weights_flat = weights.flatten(0, 1)
             resampled_index_flat = weights_flat.multinomial(num, replacement=True)
             resampled_index = resampled_index_flat.unflatten(0, (self.numH, self.numW))
-        elif method == "systematic":
+        elif self.resample_method == "systematic":
             resampled_index = torch.zeros([self.numH, self.numW, num])
             for h in range(self.numH):
                 for w in range(self.numW):
                     u = (torch.arange(num) + torch.rand([1])) / num
-                    bins = self.weights[h, w].cumsum(0)
+                    bins = weights[h, w].cumsum(0)
                     resampled_index[h, w] = torch.bucketize(u, bins)
 
-        resampled_index = resampled_index.int().clamp(min=0, max=num - 1)
+        return resampled_index.int().clamp(min=0, max=num - 1)
 
-        if multiplier >= 1:
-            counts = repeat(
-                torch.zeros_like(self.counts),
-                "numH numW N -> numH numW (m N)",
-                m=multiplier,
-            )
-            locs = repeat(
-                torch.zeros_like(self.locs),
-                "numH numW N ... -> numH numW (m N) ...",
-                m=multiplier,
-            )
-            features = repeat(
-                torch.zeros_like(self.features),
-                "numH numW N ... -> numH numW (m N) ...",
-                m=multiplier,
-            )
-            weights = repeat(
-                torch.zeros_like(self.weights),
-                "numH numW N -> numH numW (m N)",
-                m=multiplier,
-            )
-            log_density_children = repeat(
-                torch.zeros_like(self.log_density_children),
-                "numH numW N -> numH numW (m N)",
-                m=multiplier,
-            )
-        if multiplier < 1:
-            counts = torch.zeros_like(self.counts)[:, :, :num]
-            locs = torch.zeros_like(self.locs)[:, :, :num, ...]
-            features = torch.zeros_like(self.features)[:, :, :num, ...]
-            weights = torch.zeros_like(self.weights)[:, :, :num]
-            log_density_children = torch.zeros_like(self.log_density_children)[
-                :, :, :num
-            ]
+    def apply_resampled_index(self, resampled_index, counts, locs, features):
+        num = resampled_index.shape[-1]
+        numH = features.shape[0]
+        numW = features.shape[1]
+        max_objects = features.shape[-1]
+        cs = torch.zeros(numH, numW, num)
+        ls = torch.zeros(numH, numW, num, max_objects, 2)
+        fs = torch.zeros(numH, numW, num, max_objects)
+        ws = torch.zeros(numH, numW, num)
 
         for h in range(self.numH):
             for w in range(self.numW):
-                counts[h, w, :] = self.counts[h, w, resampled_index[h, w, :]]
-                locs[h, w, :] = self.locs[h, w, resampled_index[h, w, :]]
-                features[h, w, :] = self.features[h, w, resampled_index[h, w, :]]
-                weights[h, w, :] = 1 / num
-                log_density_children[h, w, :] = self.log_density_children[
-                    h, w, resampled_index[h, w, :]
-                ]
+                cs[h, w, :] = counts[h, w, resampled_index[h, w, :]]
+                ls[h, w, :] = locs[h, w, resampled_index[h, w, :]]
+                fs[h, w, :] = features[h, w, resampled_index[h, w, :]]
+                ws[h, w, :] = 1 / num
 
-        self.counts = counts
-        self.locs = locs
-        self.features = features
-        self.weights = weights
-        self.log_density_children = log_density_children
+        return cs, ls, fs, ws
 
     def log_density(self, data, counts, locs, features, temperature=1):
         logprior = self.Prior.log_prob(counts, locs, features)
         loglik = self.ImageModel.loglikelihood(data, locs, features)
         return logprior + temperature * loglik
 
-    def mutate(self):
-        self.locs, self.features = self.MutationKernel.run(
-            self.data,
-            self.counts,
-            self.locs,
-            self.features,
-            1,
-            self.log_density,
-        )
-
-    def drop_sources_from_overlap(self, axis):
+    def drop_sources_from_overlap(self, axis, counts, locs, features):
         if axis == 0:  # height axis
             sources_to_keep_even = torch.logical_and(
-                self.locs[0::2, :, ..., 0] < self.dimH, self.locs[0::2, :, ..., 0] != 0
+                locs[0::2, :, ..., 0] < self.dimH, locs[0::2, :, ..., 0] != 0
             )
-            self.counts[0::2, ...] = sources_to_keep_even.sum(-1)
-            self.features[0::2, ...] *= sources_to_keep_even
-            self.locs[0::2, ...] *= sources_to_keep_even.unsqueeze(-1)
+            counts[0::2, ...] = sources_to_keep_even.sum(-1)
+            locs[0::2, ...] *= sources_to_keep_even.unsqueeze(-1)
+            features[0::2, ...] *= sources_to_keep_even
 
-            sources_to_keep_odd = self.locs[1::2, :, ..., 0] > 0
-            self.counts[1::2, ...] = sources_to_keep_odd.sum(-1)
-            self.features[1::2, ...] *= sources_to_keep_odd
-            self.locs[1::2, ...] *= sources_to_keep_odd.unsqueeze(-1)
+            sources_to_keep_odd = locs[1::2, :, ..., 0] > 0
+            counts[1::2, ...] = sources_to_keep_odd.sum(-1)
+            locs[1::2, ...] *= sources_to_keep_odd.unsqueeze(-1)
+            features[1::2, ...] *= sources_to_keep_odd
         elif axis == 1:  # width axis
             sources_to_keep_even = torch.logical_and(
-                self.locs[:, 0::2, ..., 1] < self.dimW, self.locs[:, 0::2, ..., 1] != 0
+                locs[:, 0::2, ..., 1] < self.dimW, locs[:, 0::2, ..., 1] != 0
             )
-            self.counts[:, 0::2, ...] = sources_to_keep_even.sum(-1)
-            self.features[:, 0::2, ...] *= sources_to_keep_even
-            self.locs[:, 0::2, ...] *= sources_to_keep_even.unsqueeze(-1)
+            counts[:, 0::2, ...] = sources_to_keep_even.sum(-1)
+            locs[:, 0::2, ...] *= sources_to_keep_even.unsqueeze(-1)
+            features[:, 0::2, ...] *= sources_to_keep_even
 
-            sources_to_keep_odd = self.locs[:, 1::2, ..., 1] > 0
-            self.counts[:, 1::2, ...] = sources_to_keep_odd.sum(-1)
-            self.features[:, 1::2, ...] *= sources_to_keep_odd
-            self.locs[:, 1::2, ...] *= sources_to_keep_odd.unsqueeze(-1)
+            sources_to_keep_odd = locs[:, 1::2, ..., 1] > 0
+            counts[:, 1::2, ...] = sources_to_keep_odd.sum(-1)
+            locs[:, 1::2, ...] *= sources_to_keep_odd.unsqueeze(-1)
+            features[:, 1::2, ...] *= sources_to_keep_odd
 
-    def join(self, axis):
+        return counts, locs, features
+
+    def join(self, axis, data, counts, locs, features):
         if axis == 0:  # height axis
             self.numH = self.numH // 2
             self.dimH = self.dimH * 2
             self.ImageModel.image_height = self.ImageModel.image_height * 2
             self.Prior.image_height = self.Prior.image_height * 2
-            self.data = rearrange(
-                self.data.unfold(axis, 2, 2),
+            dat = rearrange(
+                data.unfold(axis, 2, 2),
                 "numH numW dimH dimW t -> numH numW (t dimH) dimW",
             )
         elif axis == 1:  # width axis
@@ -153,44 +130,38 @@ class Aggregate(object):
             self.dimW = self.dimW * 2
             self.ImageModel.image_width = self.ImageModel.image_width * 2
             self.Prior.image_width = self.Prior.image_width * 2
-            self.data = rearrange(
-                self.data.unfold(axis, 2, 2),
+            dat = rearrange(
+                data.unfold(axis, 2, 2),
                 "numH numW dimH dimW t -> numH numW dimH (t dimW)",
             )
 
-        self.counts = self.counts.unfold(axis, 2, 2).sum(3)
+        cs = counts.unfold(axis, 2, 2).sum(3)
 
-        self.Prior.max_objects = max(
-            1, self.counts.max().int().item()
-        )  # max objects detected
+        self.Prior.max_objects = max(1, cs.max().int().item())  # max objects detected
         self.Prior.update_attrs()
         self.ImageModel.update_psf_grid()
-        self.MutationKernel.locs_min = self.Prior.loc_prior.low
-        self.MutationKernel.locs_max = self.Prior.loc_prior.high
 
-        locs_unfolded = self.locs.unfold(axis, 2, 2)
+        locs_unfolded = locs.unfold(axis, 2, 2)
         locs_unfolded_mask = (locs_unfolded != 0).int()
         locs_unfolded.select(-2, axis)[..., -1] += (self.dimH / 2) * (1 - axis) + (
             self.dimW / 2
         ) * axis
         locs_adjusted = locs_unfolded * locs_unfolded_mask
-        self.locs = rearrange(locs_adjusted, "numH numW N M l t -> numH numW N (t M) l")
-        locs_mask = (self.locs != 0).int()
+        ls = rearrange(locs_adjusted, "numH numW N M l t -> numH numW N (t M) l")
+        locs_mask = (ls != 0).int()
         locs_index = torch.sort(locs_mask, dim=3, descending=True)[1]
-        self.locs = torch.gather(self.locs, dim=3, index=locs_index)[
-            ..., : self.Prior.max_objects, :
-        ]
+        ls = torch.gather(ls, dim=3, index=locs_index)[..., : self.Prior.max_objects, :]
 
-        self.features = rearrange(
-            self.features.unfold(axis, 2, 2), "numH numW N M t -> numH numW N (t M)"
+        fs = rearrange(
+            features.unfold(axis, 2, 2), "numH numW N M t -> numH numW N (t M)"
         )
-        features_mask = (self.features != 0).int()
+        features_mask = (fs != 0).int()
         features_index = torch.sort(features_mask, dim=3, descending=True)[1]
-        self.features = torch.gather(self.features, dim=3, index=features_index)[
+        fs = torch.gather(fs, dim=3, index=features_index)[
             ..., : self.Prior.max_objects
         ]
 
-        self.log_density_children = self.log_density_children.unfold(axis, 2, 2).sum(3)
+        return dat, cs, ls, fs
 
     def prune(self):
         in_bounds = torch.all(
@@ -212,29 +183,54 @@ class Aggregate(object):
         features_index = torch.sort(features_mask, dim=3, descending=True)[1]
         self.features = torch.gather(self.features, dim=3, index=features_index)
 
-    def run(self):
-        for level in range(self.num_aggregation_levels):
-            self.resample()
-            self.mutate()
-            self.log_density_children = self.log_density(
-                self.data, self.counts, self.locs, self.features
+    def merge(self, level):
+        if self.merge_method == "naive":
+            index = self.get_resampled_index(self.weights, 1)
+            cs, ls, fs, ws = self.apply_resampled_index(
+                index, self.counts, self.locs, self.features
             )
 
             if level % 2 == 0:
-                self.drop_sources_from_overlap(axis=0)
-                self.join(axis=0)
+                cs, ls, fs = self.drop_sources_from_overlap(0, cs, ls, fs)
+                self.data, self.counts, self.locs, self.features = self.join(
+                    0, self.data, cs, ls, fs
+                )
             elif level % 2 != 0:
-                self.drop_sources_from_overlap(axis=1)
-                self.join(axis=1)
-
-            self.log_density_parents = self.log_density(
-                self.data, self.counts, self.locs, self.features
+                cs, ls, fs = self.drop_sources_from_overlap(1, cs, ls, fs)
+                self.data, self.counts, self.locs, self.features = self.join(
+                    1, self.data, cs, ls, fs
+                )
+        elif self.merge_method == "lw_mixture":
+            index = self.get_resampled_index(self.weights, self.merge_multiplier)
+            cs, ls, fs, ws = self.apply_resampled_index(
+                index, self.counts, self.locs, self.features
             )
-            self.weights = (
-                self.log_density_parents - self.log_density_children
-            ).softmax(-1)
 
-        self.resample()
+            if level % 2 == 0:
+                cs, ls, fs = self.drop_sources_from_overlap(0, cs, ls, fs)
+                self.data, cs, ls, fs = self.join(0, self.data, cs, ls, fs)
+            elif level % 2 != 0:
+                cs, ls, fs = self.drop_sources_from_overlap(1, cs, ls, fs)
+                self.data, cs, ls, fs = self.join(1, self.data, cs, ls, fs)
+
+            ld = self.log_density(self.data, cs, ls, fs)
+            ws = ld.softmax(-1)
+
+            index = self.get_resampled_index(ws, 1 / self.merge_multiplier)
+            res = self.apply_resampled_index(index, cs, ls, fs)
+            self.counts, self.locs, self.features, self.weights = res
+
+    def run(self):
+        for level in range(self.num_aggregation_levels):
+            self.merge(level)
+
+            ld = self.log_density(self.data, self.counts, self.locs, self.features)
+            self.weights = ld.softmax(-1)
+
+        index = self.get_resampled_index(self.weights, 1)
+        res = self.apply_resampled_index(index, self.counts, self.locs, self.features)
+        self.counts, self.locs, self.features, self.weights = res
+
         self.prune()
 
     @property
