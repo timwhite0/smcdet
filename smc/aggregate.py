@@ -9,6 +9,8 @@ class Aggregate(object):
         self,
         Prior,
         ImageModel,
+        MutationKernel,
+        num_tempering_steps,
         data,
         counts,
         locs,
@@ -20,6 +22,13 @@ class Aggregate(object):
     ):
         self.Prior = deepcopy(Prior)
         self.ImageModel = deepcopy(ImageModel)
+        self.MutationKernel = deepcopy(MutationKernel)
+        self.MutationKernel.locs_min = self.Prior.loc_prior.low
+        self.MutationKernel.locs_max = self.Prior.loc_prior.high
+
+        self.temperature_prev = torch.zeros(1)
+        self.temperatures = torch.logspace(start=-5, end=0, steps=num_tempering_steps)
+        self.temperature = self.temperatures[0]
 
         self.data = data
         self.counts = counts
@@ -87,6 +96,16 @@ class Aggregate(object):
         loglik = self.ImageModel.loglikelihood(data, locs, features)
         return logprior + temperature * loglik
 
+    def mutate(self):
+        self.locs, self.features = self.MutationKernel.run(
+            self.data,
+            self.counts,
+            self.locs,
+            self.features,
+            self.temperature_prev,
+            self.log_density,
+        )
+
     def drop_sources_from_overlap(self, axis, counts, locs, features):
         if axis == 0:  # height axis
             sources_to_keep_even = torch.logical_and(
@@ -140,6 +159,8 @@ class Aggregate(object):
         self.Prior.max_objects = max(1, cs.max().int().item())  # max objects detected
         self.Prior.update_attrs()
         self.ImageModel.update_psf_grid()
+        self.MutationKernel.locs_min = self.Prior.loc_prior.low
+        self.MutationKernel.locs_max = self.Prior.loc_prior.high
 
         locs_unfolded = locs.unfold(axis, 2, 2)
         locs_unfolded_mask = (locs_unfolded != 0).int()
@@ -222,10 +243,34 @@ class Aggregate(object):
 
     def run(self):
         for level in range(self.num_aggregation_levels):
+            print(f"level {level}")
+
             self.merge(level)
 
-            ld = self.log_density(self.data, self.counts, self.locs, self.features)
-            self.weights = ld.softmax(-1)
+            self.weights = (
+                (self.temperature - self.temperature_prev)
+                * self.ImageModel.loglikelihood(self.data, self.locs, self.features)
+            ).softmax(-1)
+            for temp in self.temperatures[1:]:
+                index = self.get_resampled_index(self.weights, 1)
+                res = self.apply_resampled_index(
+                    index, self.counts, self.locs, self.features
+                )
+                self.counts, self.locs, self.features, self.weights = res
+
+                self.mutate()
+
+                self.temperature_prev = self.temperature
+                self.temperature = temp
+
+                self.weights = (
+                    (self.temperature - self.temperature_prev)
+                    * self.ImageModel.loglikelihood(self.data, self.locs, self.features)
+                ).softmax(-1)
+
+            # reset for next merge
+            self.temperature_prev = torch.zeros(1)
+            self.temperature = self.temperatures[0]
 
         index = self.get_resampled_index(self.weights, 1)
         res = self.apply_resampled_index(index, self.counts, self.locs, self.features)
