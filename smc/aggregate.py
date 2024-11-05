@@ -276,6 +276,8 @@ class Aggregate(object):
         for level in range(self.num_aggregation_levels):
             print(f"level {level}")
 
+            self.iter = 0
+
             self.merge(level)
 
             self.temper()
@@ -286,6 +288,13 @@ class Aggregate(object):
             ).softmax(-1)
 
             while self.temperature < 1:
+                self.iter += 1
+
+                if self.iter % 5 == 0:
+                    print(
+                        f"iteration {self.iter}, temperature = {self.temperature.item()}"
+                    )
+
                 index = self.get_resampled_index(self.weights, 1)
                 res = self.apply_resampled_index(
                     index, self.counts, self.locs, self.features
