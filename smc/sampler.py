@@ -49,10 +49,10 @@ class SMCsampler(object):
             stratify_by_count=True,
             num_catalogs_per_count=self.num_catalogs_per_count,
         )
-        self.counts, self.locs, self.features = cats
-        self.features = self.features.clamp(
-            min=self.MutationKernel.features_min, max=self.MutationKernel.features_max
-        ) * (self.features != 0)
+        self.counts, self.locs, self.fluxes = cats
+        self.fluxes = self.fluxes.clamp(
+            min=self.MutationKernel.fluxes_min, max=self.MutationKernel.fluxes_max
+        ) * (self.fluxes != 0)
 
         # initialize temperature
         self.temperature_prev = torch.zeros(1)
@@ -60,7 +60,7 @@ class SMCsampler(object):
 
         # cache loglikelihood for tempering step
         self.loglik = self.ImageModel.loglikelihood(
-            self.tiled_image, self.locs, self.features
+            self.tiled_image, self.locs, self.fluxes
         )
 
         # initialize weights
@@ -80,9 +80,9 @@ class SMCsampler(object):
 
         self.has_run = False
 
-    def log_target(self, data, counts, locs, features, temperature):
-        logprior = self.Prior.log_prob(counts, locs, features)
-        loglik = self.ImageModel.loglikelihood(data, locs, features)
+    def log_target(self, data, counts, locs, fluxes, temperature):
+        logprior = self.Prior.log_prob(counts, locs, fluxes)
+        loglik = self.ImageModel.loglikelihood(data, locs, fluxes)
 
         return logprior + temperature * loglik
 
@@ -94,7 +94,7 @@ class SMCsampler(object):
 
     def temper(self):
         self.loglik = self.ImageModel.loglikelihood(
-            self.tiled_image, self.locs, self.features
+            self.tiled_image, self.locs, self.fluxes
         )
 
         solutions = torch.zeros(
@@ -157,11 +157,11 @@ class SMCsampler(object):
             for h in range(self.num_tiles_per_side):
                 for w in range(self.num_tiles_per_side):
                     l = self.locs[h, w, lower:upper, :, :]
-                    f = self.features[h, w, lower:upper, :]
+                    f = self.fluxes[h, w, lower:upper, :]
                     self.locs[h, w, lower:upper, :, :] = l[
                         resampled_index[h, w, :], :, :
                     ]
-                    self.features[h, w, lower:upper, :] = f[resampled_index[h, w, :], :]
+                    self.fluxes[h, w, lower:upper, :] = f[resampled_index[h, w, :], :]
 
             self.weights_intracount[:, :, count_num, :] = (
                 1 / self.num_catalogs_per_count
@@ -177,11 +177,11 @@ class SMCsampler(object):
             )
 
     def mutate(self):
-        self.locs, self.features = self.MutationKernel.run(
+        self.locs, self.fluxes = self.MutationKernel.run(
             self.tiled_image,
             self.counts,
             self.locs,
-            self.features,
+            self.fluxes,
             self.temperature_prev,
             self.log_target,
         )

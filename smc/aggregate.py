@@ -14,7 +14,7 @@ class Aggregate(object):
         data,
         counts,
         locs,
-        features,
+        fluxes,
         weights,
         resample_method,
         merge_method,
@@ -33,7 +33,7 @@ class Aggregate(object):
         self.data = data
         self.counts = counts
         self.locs = locs
-        self.features = features
+        self.fluxes = fluxes
         self.weights = weights
         self.num_catalogs = self.weights.shape[-1]
 
@@ -74,11 +74,11 @@ class Aggregate(object):
 
         return resampled_index.int().clamp(min=0, max=num - 1)
 
-    def apply_resampled_index(self, resampled_index, counts, locs, features):
+    def apply_resampled_index(self, resampled_index, counts, locs, fluxes):
         num = resampled_index.shape[-1]
-        numH = features.shape[0]
-        numW = features.shape[1]
-        max_objects = features.shape[-1]
+        numH = fluxes.shape[0]
+        numW = fluxes.shape[1]
+        max_objects = fluxes.shape[-1]
         cs = torch.zeros(numH, numW, num)
         ls = torch.zeros(numH, numW, num, max_objects, 2)
         fs = torch.zeros(numH, numW, num, max_objects)
@@ -88,14 +88,14 @@ class Aggregate(object):
             for w in range(self.numW):
                 cs[h, w, :] = counts[h, w, resampled_index[h, w, :]]
                 ls[h, w, :] = locs[h, w, resampled_index[h, w, :]]
-                fs[h, w, :] = features[h, w, resampled_index[h, w, :]]
+                fs[h, w, :] = fluxes[h, w, resampled_index[h, w, :]]
                 ws[h, w, :] = 1 / num
 
         return cs, ls, fs, ws
 
-    def log_density(self, data, counts, locs, features, temperature=1):
-        logprior = self.Prior.log_prob(counts, locs, features)
-        loglik = self.ImageModel.loglikelihood(data, locs, features)
+    def log_density(self, data, counts, locs, fluxes, temperature=1):
+        logprior = self.Prior.log_prob(counts, locs, fluxes)
+        loglik = self.ImageModel.loglikelihood(data, locs, fluxes)
         return logprior + temperature * loglik
 
     def tempering_objective(self, loglikelihood, delta):
@@ -105,7 +105,7 @@ class Aggregate(object):
         return (log_numerator - log_denominator).exp() - self.ess_threshold
 
     def temper(self):
-        self.loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.features)
+        self.loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.fluxes)
 
         solutions = torch.zeros(self.numH, self.numW)
 
@@ -128,44 +128,44 @@ class Aggregate(object):
         self.temperature = self.temperature + delta
 
     def mutate(self):
-        self.locs, self.features = self.MutationKernel.run(
+        self.locs, self.fluxes = self.MutationKernel.run(
             self.data,
             self.counts,
             self.locs,
-            self.features,
+            self.fluxes,
             self.temperature_prev,
             self.log_density,
         )
 
-    def drop_sources_from_overlap(self, axis, counts, locs, features):
+    def drop_sources_from_overlap(self, axis, counts, locs, fluxes):
         if axis == 0:  # height axis
             sources_to_keep_even = torch.logical_and(
                 locs[0::2, :, ..., 0] < self.dimH, locs[0::2, :, ..., 0] != 0
             )
             counts[0::2, ...] = sources_to_keep_even.sum(-1)
             locs[0::2, ...] *= sources_to_keep_even.unsqueeze(-1)
-            features[0::2, ...] *= sources_to_keep_even
+            fluxes[0::2, ...] *= sources_to_keep_even
 
             sources_to_keep_odd = locs[1::2, :, ..., 0] > 0
             counts[1::2, ...] = sources_to_keep_odd.sum(-1)
             locs[1::2, ...] *= sources_to_keep_odd.unsqueeze(-1)
-            features[1::2, ...] *= sources_to_keep_odd
+            fluxes[1::2, ...] *= sources_to_keep_odd
         elif axis == 1:  # width axis
             sources_to_keep_even = torch.logical_and(
                 locs[:, 0::2, ..., 1] < self.dimW, locs[:, 0::2, ..., 1] != 0
             )
             counts[:, 0::2, ...] = sources_to_keep_even.sum(-1)
             locs[:, 0::2, ...] *= sources_to_keep_even.unsqueeze(-1)
-            features[:, 0::2, ...] *= sources_to_keep_even
+            fluxes[:, 0::2, ...] *= sources_to_keep_even
 
             sources_to_keep_odd = locs[:, 1::2, ..., 1] > 0
             counts[:, 1::2, ...] = sources_to_keep_odd.sum(-1)
             locs[:, 1::2, ...] *= sources_to_keep_odd.unsqueeze(-1)
-            features[:, 1::2, ...] *= sources_to_keep_odd
+            fluxes[:, 1::2, ...] *= sources_to_keep_odd
 
-        return counts, locs, features
+        return counts, locs, fluxes
 
-    def join(self, axis, data, counts, locs, features):
+    def join(self, axis, data, counts, locs, fluxes):
         if axis == 0:  # height axis
             self.numH = self.numH // 2
             self.dimH = self.dimH * 2
@@ -205,13 +205,11 @@ class Aggregate(object):
         ls = torch.gather(ls, dim=3, index=locs_index)[..., : self.Prior.max_objects, :]
 
         fs = rearrange(
-            features.unfold(axis, 2, 2), "numH numW N M t -> numH numW N (t M)"
+            fluxes.unfold(axis, 2, 2), "numH numW N M t -> numH numW N (t M)"
         )
-        features_mask = (fs != 0).int()
-        features_index = torch.sort(features_mask, dim=3, descending=True)[1]
-        fs = torch.gather(fs, dim=3, index=features_index)[
-            ..., : self.Prior.max_objects
-        ]
+        fluxes_mask = (fs != 0).int()
+        fluxes_index = torch.sort(fluxes_mask, dim=3, descending=True)[1]
+        fs = torch.gather(fs, dim=3, index=fluxes_index)[..., : self.Prior.max_objects]
 
         return dat, cs, ls, fs
 
@@ -230,32 +228,32 @@ class Aggregate(object):
         locs_index = torch.sort(locs_mask, dim=3, descending=True)[1]
         self.locs = torch.gather(self.locs, dim=3, index=locs_index)
 
-        self.features = in_bounds * self.features
-        features_mask = (self.features != 0).int()
-        features_index = torch.sort(features_mask, dim=3, descending=True)[1]
-        self.features = torch.gather(self.features, dim=3, index=features_index)
+        self.fluxes = in_bounds * self.fluxes
+        fluxes_mask = (self.fluxes != 0).int()
+        fluxes_index = torch.sort(fluxes_mask, dim=3, descending=True)[1]
+        self.fluxes = torch.gather(self.fluxes, dim=3, index=fluxes_index)
 
     def merge(self, level):
         if self.merge_method == "naive":
             index = self.get_resampled_index(self.weights, 1)
             cs, ls, fs, ws = self.apply_resampled_index(
-                index, self.counts, self.locs, self.features
+                index, self.counts, self.locs, self.fluxes
             )
 
             if level % 2 == 0:
                 cs, ls, fs = self.drop_sources_from_overlap(0, cs, ls, fs)
-                self.data, self.counts, self.locs, self.features = self.join(
+                self.data, self.counts, self.locs, self.fluxes = self.join(
                     0, self.data, cs, ls, fs
                 )
             elif level % 2 != 0:
                 cs, ls, fs = self.drop_sources_from_overlap(1, cs, ls, fs)
-                self.data, self.counts, self.locs, self.features = self.join(
+                self.data, self.counts, self.locs, self.fluxes = self.join(
                     1, self.data, cs, ls, fs
                 )
         elif self.merge_method == "lw_mixture":
             index = self.get_resampled_index(self.weights, self.merge_multiplier)
             cs, ls, fs, ws = self.apply_resampled_index(
-                index, self.counts, self.locs, self.features
+                index, self.counts, self.locs, self.fluxes
             )
 
             if level % 2 == 0:
@@ -270,7 +268,7 @@ class Aggregate(object):
 
             index = self.get_resampled_index(ws, 1 / self.merge_multiplier)
             res = self.apply_resampled_index(index, cs, ls, fs)
-            self.counts, self.locs, self.features, self.weights = res
+            self.counts, self.locs, self.fluxes, self.weights = res
 
     def run(self):
         for level in range(self.num_aggregation_levels):
@@ -284,7 +282,7 @@ class Aggregate(object):
 
             self.weights = (
                 (self.temperature - self.temperature_prev)
-                * self.ImageModel.loglikelihood(self.data, self.locs, self.features)
+                * self.ImageModel.loglikelihood(self.data, self.locs, self.fluxes)
             ).softmax(-1)
 
             while self.temperature < 1:
@@ -297,9 +295,9 @@ class Aggregate(object):
 
                 index = self.get_resampled_index(self.weights, 1)
                 res = self.apply_resampled_index(
-                    index, self.counts, self.locs, self.features
+                    index, self.counts, self.locs, self.fluxes
                 )
-                self.counts, self.locs, self.features, self.weights = res
+                self.counts, self.locs, self.fluxes, self.weights = res
 
                 self.mutate()
 
@@ -307,7 +305,7 @@ class Aggregate(object):
 
                 self.weights = (
                     (self.temperature - self.temperature_prev)
-                    * self.ImageModel.loglikelihood(self.data, self.locs, self.features)
+                    * self.ImageModel.loglikelihood(self.data, self.locs, self.fluxes)
                 ).softmax(-1)
 
             # reset for next merge
@@ -315,8 +313,8 @@ class Aggregate(object):
             self.temperature = torch.zeros(1)
 
         index = self.get_resampled_index(self.weights, 1)
-        res = self.apply_resampled_index(index, self.counts, self.locs, self.features)
-        self.counts, self.locs, self.features, self.weights = res
+        res = self.apply_resampled_index(index, self.counts, self.locs, self.fluxes)
+        self.counts, self.locs, self.fluxes, self.weights = res
 
         self.prune()
 
@@ -330,4 +328,4 @@ class Aggregate(object):
 
     @property
     def posterior_mean_total_flux(self):
-        return (self.weights * self.features.sum(-1)).sum(-1)
+        return (self.weights * self.fluxes.sum(-1)).sum(-1)
