@@ -31,10 +31,10 @@ class ImageModel(object):
 
     def generate(self, Prior, num_images=1):
         catalogs = Prior.sample(num_catalogs=num_images)
-        counts, locs, features = catalogs
+        counts, locs, fluxes = catalogs
 
         psf = self.psf(locs)
-        rate = (psf * features.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
+        rate = (psf * fluxes.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
         images = Poisson(rate).sample()
 
         if Prior.pad > 0:
@@ -52,21 +52,21 @@ class ImageModel(object):
             locs_index = torch.sort(locs_mask, dim=3, descending=True)[1]
             locs = torch.gather(locs, dim=3, index=locs_index)
 
-            features = in_bounds * features
-            features_mask = (features != 0).int()
-            features_index = torch.sort(features_mask, dim=3, descending=True)[1]
-            features = torch.gather(features, dim=3, index=features_index)
+            fluxes = in_bounds * fluxes
+            fluxes_mask = (fluxes != 0).int()
+            fluxes_index = torch.sort(fluxes_mask, dim=3, descending=True)[1]
+            fluxes = torch.gather(fluxes, dim=3, index=fluxes_index)
 
         counts = counts.squeeze([0, 1])
         locs = locs.squeeze([0, 1])
-        features = features.squeeze([0, 1])
+        fluxes = fluxes.squeeze([0, 1])
         images = rearrange(images.squeeze([0, 1]), "dimH dimW n -> n dimH dimW")
 
-        return [counts, locs, features, images]
+        return [counts, locs, fluxes, images]
 
-    def loglikelihood(self, tiled_image, locs, features):
+    def loglikelihood(self, tiled_image, locs, fluxes):
         psf = self.psf(locs)
-        rate = (psf * features.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
+        rate = (psf * fluxes.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
         loglik = Poisson(rate).log_prob(tiled_image.unsqueeze(-1)).sum([-2, -3])
 
         return loglik

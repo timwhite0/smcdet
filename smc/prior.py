@@ -80,7 +80,7 @@ class StarPrior(PointProcessPrior):
         super().__init__(*args, **kwargs)
         self.flux_mean = flux_mean
         self.flux_stdev = flux_stdev
-        self.feature_prior = Normal(self.flux_mean, self.flux_stdev)
+        self.flux_prior = Normal(self.flux_mean, self.flux_stdev)
 
     def sample(
         self,
@@ -93,17 +93,15 @@ class StarPrior(PointProcessPrior):
             num_catalogs, num_tiles_per_side, stratify_by_count, num_catalogs_per_count
         )
 
-        features = self.feature_prior.sample(
+        fluxes = self.flux_prior.sample(
             [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
         )
-        features *= self.counts_mask
+        fluxes *= self.counts_mask
 
-        return [counts, locs, features]
+        return [counts, locs, fluxes]
 
     # we define log_prob for stratify_by_count = True, to be used within SMCsampler
-    def log_prob(self, counts, locs, features):
+    def log_prob(self, counts, locs, fluxes):
         log_prior = super().log_prob(counts, locs)
 
-        return log_prior + (
-            self.feature_prior.log_prob(features) * self.counts_mask
-        ).sum(-1)
+        return log_prior + (self.flux_prior.log_prob(fluxes) * self.counts_mask).sum(-1)
