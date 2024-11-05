@@ -5,12 +5,13 @@
 
 import sys
 
+sys.path.append("../../")
+
 import torch
 
 from smc.images import ImageModel
 from smc.prior import StarPrior
 
-sys.path.append("../../")
 device = torch.device("cuda:4" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 torch.set_default_device(device)
@@ -21,8 +22,8 @@ torch.set_default_device(device)
 
 # image attributes
 image_dim = 32
-psf_stdev = 1.5
-background = 100000
+psf_stdev = 1.0
+background = 1300
 
 imagemodel = ImageModel(
     image_height=image_dim,
@@ -32,12 +33,12 @@ imagemodel = ImageModel(
 )
 
 # prior
-max_objects = 12
-flux_mean = 80000
-flux_stdev = 15000
+max_objects = 20
+flux_mean = 1300
+flux_stdev = 250
 pad = 2
 prior = StarPrior(
-    max_objects=max_objects + 2,
+    max_objects=max_objects + 8,
     image_height=image_dim,
     image_width=image_dim,
     flux_mean=flux_mean,
