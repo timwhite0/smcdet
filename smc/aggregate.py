@@ -2,6 +2,7 @@ from copy import deepcopy
 
 import torch
 from einops import rearrange
+from scipy.optimize import brentq
 
 
 class Aggregate(object):
@@ -10,7 +11,6 @@ class Aggregate(object):
         Prior,
         ImageModel,
         MutationKernel,
-        num_tempering_steps,
         data,
         counts,
         locs,
@@ -19,6 +19,7 @@ class Aggregate(object):
         resample_method,
         merge_method,
         merge_multiplier,
+        ess_threshold,
     ):
         self.Prior = deepcopy(Prior)
         self.ImageModel = deepcopy(ImageModel)
@@ -27,8 +28,7 @@ class Aggregate(object):
         self.MutationKernel.locs_max = self.Prior.loc_prior.high
 
         self.temperature_prev = torch.zeros(1)
-        self.temperatures = torch.logspace(start=-5, end=0, steps=num_tempering_steps)
-        self.temperature = self.temperatures[0]
+        self.temperature = torch.zeros(1)
 
         self.data = data
         self.counts = counts
@@ -54,6 +54,8 @@ class Aggregate(object):
             self.merge_multiplier = 1.0
         elif merge_method == "lw_mixture":
             self.merge_multiplier = float(merge_multiplier)
+
+        self.ess_threshold = ess_threshold
 
     def get_resampled_index(self, weights, multiplier):
         num = int(multiplier * weights.shape[-1])
@@ -95,6 +97,35 @@ class Aggregate(object):
         logprior = self.Prior.log_prob(counts, locs, features)
         loglik = self.ImageModel.loglikelihood(data, locs, features)
         return logprior + temperature * loglik
+
+    def tempering_objective(self, loglikelihood, delta):
+        log_numerator = 2 * ((delta * loglikelihood).logsumexp(0))
+        log_denominator = (2 * delta * loglikelihood).logsumexp(0)
+
+        return (log_numerator - log_denominator).exp() - self.ess_threshold
+
+    def temper(self):
+        self.loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.features)
+
+        solutions = torch.zeros(self.numH, self.numW)
+
+        for h in range(self.numH):
+            for w in range(self.numW):
+
+                def func(delta):
+                    return self.tempering_objective(self.loglik[h, w], delta)
+
+                if func(1 - self.temperature.item()) < 0:
+                    solutions[h, w] = brentq(
+                        func, 0.0, 1 - self.temperature.item(), xtol=1e-6, rtol=1e-6
+                    )
+                else:
+                    solutions[h, w] = 1 - self.temperature.item()
+
+        delta = solutions.min()
+
+        self.temperature_prev = self.temperature
+        self.temperature = self.temperature + delta
 
     def mutate(self):
         self.locs, self.features = self.MutationKernel.run(
@@ -247,11 +278,14 @@ class Aggregate(object):
 
             self.merge(level)
 
+            self.temper()
+
             self.weights = (
                 (self.temperature - self.temperature_prev)
                 * self.ImageModel.loglikelihood(self.data, self.locs, self.features)
             ).softmax(-1)
-            for temp in self.temperatures[1:]:
+
+            while self.temperature < 1:
                 index = self.get_resampled_index(self.weights, 1)
                 res = self.apply_resampled_index(
                     index, self.counts, self.locs, self.features
@@ -260,8 +294,7 @@ class Aggregate(object):
 
                 self.mutate()
 
-                self.temperature_prev = self.temperature
-                self.temperature = temp
+                self.temper()
 
                 self.weights = (
                     (self.temperature - self.temperature_prev)
@@ -270,7 +303,7 @@ class Aggregate(object):
 
             # reset for next merge
             self.temperature_prev = torch.zeros(1)
-            self.temperature = self.temperatures[0]
+            self.temperature = torch.zeros(1)
 
         index = self.get_resampled_index(self.weights, 1)
         res = self.apply_resampled_index(index, self.counts, self.locs, self.features)
