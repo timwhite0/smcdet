@@ -271,6 +271,8 @@ class Aggregate(object):
             self.counts, self.locs, self.fluxes, self.weights = res
 
     def run(self):
+        print("Aggregating tile catalogs...")
+
         for level in range(self.num_aggregation_levels):
             print(f"level {level}")
 
@@ -317,6 +319,8 @@ class Aggregate(object):
         self.counts, self.locs, self.fluxes, self.weights = res
 
         self.prune()
+
+        print("Done!\n")
 
     @property
     def ESS(self):
