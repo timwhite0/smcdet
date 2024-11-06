@@ -128,7 +128,7 @@ for b in range(num_batches):
             resample_method="multinomial",
             merge_method="naive",
             merge_multiplier=1,
-            ess_threshold=sampler.Prior.max_objects * sampler.ess_threshold,
+            ess_threshold=(sampler.Prior.max_objects + 1) * sampler.ess_threshold,
         )
 
         agg.run()
