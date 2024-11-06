@@ -9,7 +9,7 @@ import sep
 import torch
 from torch.nn.functional import pad
 
-device = torch.device("cuda:7" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 torch.set_default_device(device)
 
@@ -26,7 +26,7 @@ true_fluxes = torch.load("data/true_fluxes.pt").to(device)
 num_images = images.shape[0]
 image_height = images.shape[1]
 image_width = images.shape[2]
-background = 100000
+background = 300
 padding = 2
 padded_images = pad(images, (padding, padding, padding, padding), mode="reflect")
 max_detections = 100
@@ -37,7 +37,7 @@ max_detections = 100
 
 print("Starting grid search...\n")
 
-thresh = torch.linspace(start=1000, end=2000, steps=3)
+thresh = torch.linspace(start=50, end=100, steps=3)
 minarea = torch.linspace(start=1, end=5, steps=3)
 deblend_cont = torch.logspace(start=-4, end=-2, steps=3)
 clean_param = torch.logspace(start=-1, end=1, steps=3)
