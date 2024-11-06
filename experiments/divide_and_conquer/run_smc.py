@@ -4,6 +4,9 @@
 # SETUP
 
 import sys
+
+sys.path.append("/home/twhit/smc_object_detection/")
+
 import time
 
 import torch
@@ -14,7 +17,6 @@ from smc.kernel import MetropolisHastings
 from smc.prior import StarPrior
 from smc.sampler import SMCsampler
 
-sys.path.append("/home/twhit/smc_object_detection/")
 device = torch.device("cuda:4" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 torch.set_default_device(device)
@@ -43,28 +45,36 @@ prior = StarPrior(
     max_objects=5,
     image_height=tile_dim,
     image_width=tile_dim,
-    flux_mean=80000,
-    flux_stdev=15000,
+    flux_mean=1300,
+    flux_stdev=250,
     pad=2,
 )
 
 imagemodel = ImageModel(
-    image_height=tile_dim, image_width=tile_dim, psf_stdev=1.5, background=100000
+    image_height=tile_dim, image_width=tile_dim, psf_stdev=1.0, background=300
 )
 
 mh = MetropolisHastings(
     num_iters=75,
     locs_stdev=0.1,
-    features_stdev=1000,
-    features_min=50000,
-    features_max=110000,
+    fluxes_stdev=100,
+    fluxes_min=1300 - 2.5 * 250,
+    fluxes_max=1300 + 2.5 * 250,
+)
+
+aggmh = MetropolisHastings(
+    num_iters=10,
+    locs_stdev=0.05,
+    fluxes_stdev=10,
+    fluxes_min=1300 - 2.5 * 250,
+    fluxes_max=1300 + 2.5 * 250,
 )
 ##############################################
 
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 2500
+num_catalogs_per_count = 2000
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 batch_size = 10
@@ -97,7 +107,9 @@ for b in range(num_batches):
             ImageModel=imagemodel,
             MutationKernel=mh,
             num_catalogs_per_count=num_catalogs_per_count,
-            max_smc_iters=200,
+            ess_threshold=0.75 * num_catalogs_per_count,
+            resample_method="multinomial",
+            max_smc_iters=100,
         )
 
         start = time.perf_counter()
@@ -107,11 +119,16 @@ for b in range(num_batches):
         agg = Aggregate(
             sampler.Prior,
             sampler.ImageModel,
+            aggmh,
             sampler.tiled_image,
             sampler.counts,
             sampler.locs,
-            sampler.features,
+            sampler.fluxes,
             sampler.weights_intercount,
+            resample_method="multinomial",
+            merge_method="naive",
+            merge_multiplier=1,
+            ess_threshold=sampler.Prior.max_objects * sampler.ess_threshold,
         )
 
         agg.run()
@@ -123,7 +140,7 @@ for b in range(num_batches):
         counts[i] = agg.counts.squeeze([0, 1])
         index = agg.locs.shape[-2]
         locs[i, :, :index, :] = agg.locs.squeeze([0, 1])
-        fluxes[i, :, :index] = agg.features.squeeze([0, 1])
+        fluxes[i, :, :index] = agg.fluxes.squeeze([0, 1])
 
         print(f"runtime = {runtime[i]}")
         print(f"num iters = {num_iters[i]}")
