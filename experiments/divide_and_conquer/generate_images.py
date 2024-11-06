@@ -23,7 +23,7 @@ torch.set_default_device(device)
 # image attributes
 image_dim = 32
 psf_stdev = 1.0
-background = 1300
+background = 300
 
 imagemodel = ImageModel(
     image_height=image_dim,
