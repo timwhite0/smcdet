@@ -17,9 +17,7 @@ def select_cuda_device(min_free_mb=11000):
 
     if available_devices:
         best_available = max(available_devices, key=lambda x: x[1])
-        device = best_available[0]
-        mb = best_available[1]
-        max(available_devices, key=lambda x: x[1])[1]
+        device, mb = best_available
         print(f"Selected device {device}, which has {mb} MB available.")
         return device
     else:
