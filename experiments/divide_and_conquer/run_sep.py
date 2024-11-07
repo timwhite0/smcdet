@@ -9,7 +9,9 @@ import sep
 import torch
 from torch.nn.functional import pad
 
-device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
+from utils.misc import select_cuda_device
+
+device = select_cuda_device()
 torch.cuda.set_device(device)
 torch.set_default_device(device)
 

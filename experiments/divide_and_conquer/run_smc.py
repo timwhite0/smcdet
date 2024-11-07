@@ -11,15 +11,17 @@ import time
 
 import torch
 
+from utils.misc import select_cuda_device
+
+device = select_cuda_device()
+torch.cuda.set_device(device)
+torch.set_default_device(device)
+
 from smc.aggregate import Aggregate
 from smc.images import ImageModel
 from smc.kernel import MetropolisHastings
 from smc.prior import StarPrior
 from smc.sampler import SMCsampler
-
-device = torch.device("cuda:4" if torch.cuda.is_available() else "cpu")
-torch.cuda.set_device(device)
-torch.set_default_device(device)
 
 ##############################################
 
