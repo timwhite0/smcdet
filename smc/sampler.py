@@ -217,7 +217,7 @@ class SMCsampler(object):
     def run(self):
         self.iter = 0
 
-        print("Starting the tile samplers...")
+        print("starting the tile samplers...")
 
         self.temper()
         self.update_weights()
@@ -235,7 +235,7 @@ class SMCsampler(object):
 
         self.has_run = True
 
-        print("Done!\n")
+        print("done!\n")
 
     @property
     def posterior_mean_counts(self):

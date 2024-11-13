@@ -276,7 +276,7 @@ class Aggregate(object):
             self.counts, self.locs, self.fluxes, self.weights = res
 
     def run(self):
-        print("Aggregating tile catalogs...")
+        print("aggregating tile catalogs...")
 
         for level in range(self.num_aggregation_levels):
             print(f"level {level}")
@@ -327,7 +327,7 @@ class Aggregate(object):
 
         self.has_run = True
 
-        print("Done!\n")
+        print("done!\n")
 
     @property
     def ESS(self):
@@ -343,7 +343,7 @@ class Aggregate(object):
 
     def summarize(self):
         if self.has_run is False:
-            raise ValueError("Aggregation procedure hasn't been run yet.")
+            raise ValueError("aggregation procedure hasn't been run yet.")
 
         print("summary:\nposterior distribution of number of stars:")
         print(self.counts.unique(return_counts=True)[0].cpu())
