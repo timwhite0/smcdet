@@ -114,7 +114,7 @@ for b in range(num_batches):
 
         start = time.perf_counter()
 
-        sampler.run(print_progress=True)
+        sampler.run()
 
         agg = Aggregate(
             sampler.Prior,
@@ -142,12 +142,8 @@ for b in range(num_batches):
         locs[i, :, :index, :] = agg.locs.squeeze([0, 1])
         fluxes[i, :, :index] = agg.fluxes.squeeze([0, 1])
 
-        print(f"runtime = {runtime[i]}")
-        print(f"num iters = {num_iters[i]}")
-        print(f"posterior mean count = {agg.posterior_mean_counts.item()}")
-        print(
-            f"posterior mean total flux = {agg.posterior_mean_total_flux.item()}\n\n\n"
-        )
+        agg.summarize()
+        print(f"\nruntime = {runtime[i]}\n\n\n")
 
     torch.save(runtime.cpu(), f"results/smc/runtime_{b}.pt")
     torch.save(num_iters.cpu(), f"results/smc/num_iters_{b}.pt")
