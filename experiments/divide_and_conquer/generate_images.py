@@ -5,7 +5,7 @@
 
 import sys
 
-sys.path.append("../../")
+sys.path.append("/home/twhit/smc_object_detection/")
 
 import torch
 
