@@ -11,17 +11,16 @@ import time
 
 import torch
 
-from utils.misc import select_cuda_device
-
-device = select_cuda_device()
-torch.cuda.set_device(device)
-torch.set_default_device(device)
-
 from smc.aggregate import Aggregate
 from smc.images import ImageModel
 from smc.kernel import MetropolisHastings
 from smc.prior import StarPrior
 from smc.sampler import SMCsampler
+from utils.misc import select_cuda_device
+
+device = select_cuda_device()
+torch.cuda.set_device(device)
+torch.set_default_device(device)
 
 ##############################################
 
@@ -57,7 +56,7 @@ imagemodel = ImageModel(
 )
 
 mh = MetropolisHastings(
-    num_iters=75,
+    num_iters=50,
     locs_stdev=0.1,
     fluxes_stdev=100,
     fluxes_min=1300 - 2.5 * 250,
@@ -66,8 +65,8 @@ mh = MetropolisHastings(
 
 aggmh = MetropolisHastings(
     num_iters=10,
-    locs_stdev=0.05,
-    fluxes_stdev=10,
+    locs_stdev=0.01,
+    fluxes_stdev=5,
     fluxes_min=1300 - 2.5 * 250,
     fluxes_max=1300 + 2.5 * 250,
 )
@@ -76,7 +75,7 @@ aggmh = MetropolisHastings(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 2000
+num_catalogs_per_count = 1000
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 batch_size = 10
@@ -109,7 +108,7 @@ for b in range(num_batches):
             ImageModel=imagemodel,
             MutationKernel=mh,
             num_catalogs_per_count=num_catalogs_per_count,
-            ess_threshold=0.75 * num_catalogs_per_count,
+            ess_threshold=0.8 * num_catalogs_per_count,
             resample_method="multinomial",
             max_smc_iters=100,
         )
@@ -128,8 +127,8 @@ for b in range(num_batches):
             sampler.fluxes,
             sampler.weights_intercount,
             resample_method="multinomial",
-            merge_method="naive",
-            merge_multiplier=1,
+            merge_method="lw_mixture",
+            merge_multiplier=2,
             ess_threshold=(sampler.Prior.max_objects + 1) * sampler.ess_threshold,
         )
 
