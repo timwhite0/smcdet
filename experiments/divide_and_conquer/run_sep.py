@@ -3,6 +3,10 @@
 ##############################################
 # SETUP
 
+import sys
+
+sys.path.append("/home/twhit/smc_object_detection/")
+
 import time
 
 import sep
