@@ -21,7 +21,6 @@ from utils.misc import select_cuda_device
 device = select_cuda_device()
 torch.cuda.set_device(device)
 torch.set_default_device(device)
-
 ##############################################
 
 ##############################################

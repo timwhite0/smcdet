@@ -11,8 +11,9 @@ import torch
 
 from smc.images import ImageModel
 from smc.prior import StarPrior
+from utils.misc import select_cuda_device
 
-device = torch.device("cuda:4" if torch.cuda.is_available() else "cpu")
+device = select_cuda_device()
 torch.cuda.set_device(device)
 torch.set_default_device(device)
 ##############################################
