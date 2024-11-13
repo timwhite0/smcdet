@@ -4,6 +4,9 @@
 # SETUP
 
 import sys
+
+sys.path.append("/home/twhit/smc_object_detection/")
+
 import time
 
 import torch
@@ -13,12 +16,11 @@ from smc.images import ImageModel
 from smc.kernel import MetropolisHastings
 from smc.prior import StarPrior
 from smc.sampler import SMCsampler
+from utils.misc import select_cuda_device
 
-sys.path.append("/home/twhit/smc_object_detection/")
-device = torch.device("cuda:6" if torch.cuda.is_available() else "cpu")
+device = select_cuda_device()
 torch.cuda.set_device(device)
 torch.set_default_device(device)
-
 ##############################################
 
 ##############################################
@@ -41,35 +43,40 @@ prior = StarPrior(
     max_objects=10,
     image_height=image_height,
     image_width=image_width,
-    flux_mean=80000,
-    flux_stdev=15000,
+    flux_mean=1300,
+    flux_stdev=250,
     pad=2,
 )
 
 imagemodel = ImageModel(
-    image_height=image_height, image_width=image_width, psf_stdev=1.5, background=100000
+    image_height=image_height, image_width=image_width, psf_stdev=1.0, background=300
 )
 
 mh = MetropolisHastings(
-    num_iters=75,
+    num_iters=50,
     locs_stdev=0.1,
-    features_stdev=1000,
-    features_min=50000,
-    features_max=110000,
+    fluxes_stdev=100,
+    fluxes_min=1300 - 2.5 * 250,
+    fluxes_max=1300 + 2.5 * 250,
+)
+
+aggmh = MetropolisHastings(
+    num_iters=10,
+    locs_stdev=0.01,
+    fluxes_stdev=5,
+    fluxes_min=1300 - 2.5 * 250,
+    fluxes_max=1300 + 2.5 * 250,
 )
 ##############################################
 
 ##############################################
-# CREATE EMPTY TENSORS TO STORE RESULTS
+# SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 2500
+num_catalogs_per_count = 1000
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
-runtime = torch.zeros([num_images])
-num_iters = torch.zeros([num_images])
-counts = torch.zeros([num_images, num_catalogs])
-locs = torch.zeros([num_images, num_catalogs, prior.max_objects, 2])
-fluxes = torch.zeros([num_images, num_catalogs, prior.max_objects])
+batch_size = 10
+num_batches = num_images // batch_size
 ##############################################
 
 ##############################################
@@ -77,55 +84,70 @@ fluxes = torch.zeros([num_images, num_catalogs, prior.max_objects])
 
 torch.manual_seed(1)
 
-for i in range(num_images):
-    print(f"image {i+1} of {num_images}")
-    print(f"true count = {true_counts[i]}")
-    print(f"true total flux = {true_fluxes[i].sum()}\n")
+for b in range(num_batches):
+    runtime = torch.zeros([batch_size])
+    num_iters = torch.zeros([batch_size])
+    counts = torch.zeros([batch_size, num_catalogs])
+    locs = torch.zeros([batch_size, num_catalogs, 8 * prior.max_objects, 2])
+    fluxes = torch.zeros([batch_size, num_catalogs, 8 * prior.max_objects])
 
-    sampler = SMCsampler(
-        image=images[i],
-        tile_dim=image_height,
-        Prior=prior,
-        ImageModel=imagemodel,
-        MutationKernel=mh,
-        num_catalogs_per_count=num_catalogs_per_count,
-        max_smc_iters=200,
-    )
+    for i in range(batch_size):
+        image_index = b * batch_size + i
 
-    start = time.perf_counter()
+        print(f"image {image_index + 1} of {num_images}")
+        print(f"true count = {true_counts[image_index]}")
+        print(f"true total flux = {true_fluxes[image_index].sum()}\n")
 
-    sampler.run(print_progress=True)
+        sampler = SMCsampler(
+            image=images[image_index],
+            tile_dim=image_height,
+            Prior=prior,
+            ImageModel=imagemodel,
+            MutationKernel=mh,
+            num_catalogs_per_count=num_catalogs_per_count,
+            ess_threshold=0.8 * num_catalogs_per_count,
+            resample_method="multinomial",
+            max_smc_iters=100,
+        )
 
-    agg = Aggregate(
-        sampler.Prior,
-        sampler.ImageModel,
-        sampler.tiled_image,
-        sampler.counts,
-        sampler.locs,
-        sampler.features,
-        sampler.weights_intercount,
-    )
+        start = time.perf_counter()
 
-    agg.run()
+        sampler.run()
 
-    end = time.perf_counter()
+        agg = Aggregate(
+            sampler.Prior,
+            sampler.ImageModel,
+            aggmh,
+            sampler.tiled_image,
+            sampler.counts,
+            sampler.locs,
+            sampler.fluxes,
+            sampler.weights_intercount,
+            resample_method="multinomial",
+            merge_method="lw_mixture",
+            merge_multiplier=2,
+            ess_threshold=(sampler.Prior.max_objects + 1) * sampler.ess_threshold,
+        )
 
-    runtime[i] = end - start
-    num_iters[i] = sampler.iter
-    counts[i] = agg.counts.squeeze([0, 1])
-    locs[i] = agg.locs.squeeze([0, 1])
-    fluxes[i] = agg.features.squeeze([0, 1])
+        agg.run()
 
-    print(f"runtime = {runtime[i]}")
-    print(f"num iters = {num_iters[i]}")
-    print(f"posterior mean count = {agg.posterior_mean_counts.item()}")
-    print(f"posterior mean total flux = {agg.posterior_mean_total_flux.item()}\n\n\n")
+        end = time.perf_counter()
 
-    torch.save(runtime[: (i + 1)].cpu(), "results/smc/runtime.pt")
-    torch.save(num_iters[: (i + 1)].cpu(), "results/smc/num_iters.pt")
-    torch.save(counts[: (i + 1)].cpu(), "results/smc/counts.pt")
-    torch.save(locs[: (i + 1)].cpu(), "results/smc/locs.pt")
-    torch.save(fluxes[: (i + 1)].cpu(), "results/smc/fluxes.pt")
+        runtime[i] = end - start
+        num_iters[i] = sampler.iter
+        counts[i] = agg.counts.squeeze([0, 1])
+        index = agg.locs.shape[-2]
+        locs[i, :, :index, :] = agg.locs.squeeze([0, 1])
+        fluxes[i, :, :index] = agg.fluxes.squeeze([0, 1])
+
+        agg.summarize()
+        print(f"\nruntime = {runtime[i]}\n\n\n")
+
+    torch.save(runtime.cpu(), f"results/smc/runtime_{b}.pt")
+    torch.save(num_iters.cpu(), f"results/smc/num_iters_{b}.pt")
+    torch.save(counts.cpu(), f"results/smc/counts_{b}.pt")
+    torch.save(locs.cpu(), f"results/smc/locs_{b}.pt")
+    torch.save(fluxes.cpu(), f"results/smc/fluxes_{b}.pt")
 
 print("Done!")
 ##############################################
