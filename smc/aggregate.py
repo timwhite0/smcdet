@@ -20,6 +20,7 @@ class Aggregate(object):
         merge_method,
         merge_multiplier,
         ess_threshold,
+        print_every=5,
     ):
         self.Prior = deepcopy(Prior)
         self.ImageModel = deepcopy(ImageModel)
@@ -56,6 +57,10 @@ class Aggregate(object):
             self.merge_multiplier = float(merge_multiplier)
 
         self.ess_threshold = ess_threshold
+
+        self.print_every = print_every
+
+        self.has_run = False
 
     def get_resampled_index(self, weights, multiplier):
         num = int(multiplier * weights.shape[-1])
@@ -271,6 +276,8 @@ class Aggregate(object):
             self.counts, self.locs, self.fluxes, self.weights = res
 
     def run(self):
+        print("aggregating tile catalogs...")
+
         for level in range(self.num_aggregation_levels):
             print(f"level {level}")
 
@@ -288,7 +295,7 @@ class Aggregate(object):
             while self.temperature < 1:
                 self.iter += 1
 
-                if self.iter % 5 == 0:
+                if self.iter % self.print_every == 0:
                     print(
                         f"iteration {self.iter}, temperature = {self.temperature.item()}"
                     )
@@ -318,6 +325,10 @@ class Aggregate(object):
 
         self.prune()
 
+        self.has_run = True
+
+        print("done!\n")
+
     @property
     def ESS(self):
         return 1 / (self.weights**2).sum(-1)
@@ -329,3 +340,19 @@ class Aggregate(object):
     @property
     def posterior_mean_total_flux(self):
         return (self.weights * self.fluxes.sum(-1)).sum(-1)
+
+    def summarize(self):
+        if self.has_run is False:
+            raise ValueError("aggregation procedure hasn't been run yet.")
+
+        print("summary:\nposterior distribution of number of stars:")
+        print(self.counts.unique(return_counts=True)[0].cpu())
+        print(
+            (self.counts.unique(return_counts=True)[1] / self.counts.shape[-1])
+            .round(decimals=3)
+            .cpu()
+        )
+        print(f"\nposterior mean total flux = {self.posterior_mean_total_flux.item()}")
+        print(
+            f"\nnumber of unique catalogs = {self.fluxes[0,0].sum(-1).unique(dim=0).shape[0]}"
+        )

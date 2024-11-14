@@ -14,6 +14,7 @@ class SMCsampler(object):
         ess_threshold,
         resample_method,
         max_smc_iters,
+        print_every=5,
     ):
         self.image = image
         self.image_dim = image.shape[0]
@@ -42,6 +43,8 @@ class SMCsampler(object):
         self.resample_method = resample_method
 
         self.max_smc_iters = max_smc_iters
+
+        self.print_every = print_every
 
         # initialize catalogs
         cats = self.Prior.sample(
@@ -211,11 +214,10 @@ class SMCsampler(object):
 
         self.ESS = 1 / (self.weights_intracount**2).sum(3)
 
-    def run(self, print_progress=True):
+    def run(self):
         self.iter = 0
 
-        if print_progress is True:
-            print("Starting the tile samplers...")
+        print("starting the tile samplers...")
 
         self.temper()
         self.update_weights()
@@ -223,7 +225,7 @@ class SMCsampler(object):
         while self.temperature < 1 and self.iter <= self.max_smc_iters:
             self.iter += 1
 
-            if print_progress is True and self.iter % 5 == 0:
+            if self.iter % self.print_every == 0:
                 print(f"iteration {self.iter}, temperature = {self.temperature.item()}")
 
             self.resample()
@@ -233,8 +235,7 @@ class SMCsampler(object):
 
         self.has_run = True
 
-        if print_progress is True:
-            print("Done!\n")
+        print("done!\n")
 
     @property
     def posterior_mean_counts(self):
@@ -244,5 +245,7 @@ class SMCsampler(object):
         if self.has_run is False:
             raise ValueError("Sampler hasn't been run yet.")
 
-        print(f"summary\nnumber of SMC iterations: {self.iter}")
-        print(f"posterior mean count by tile:\n{self.posterior_mean_counts}")
+        print(f"summary:\nnumber of SMC iterations = {self.iter}\n")
+        print(
+            f"posterior mean count by tile (including padding):\n{self.posterior_mean_counts}"
+        )

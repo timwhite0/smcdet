@@ -7,4 +7,5 @@ experiments/*/data/
 experiments/*/results/sep/
 experiments/*/results/smc/
 experiments/*/*.out
-**/debug.py
+debug.py
+**/tmp**
