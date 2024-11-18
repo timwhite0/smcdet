@@ -42,7 +42,7 @@ image_width = images.shape[2]
 tile_dim = 8
 
 prior = StarPrior(
-    max_objects=5,
+    max_objects=6,
     image_height=tile_dim,
     image_width=tile_dim,
     flux_mean=1300,
@@ -55,7 +55,7 @@ imagemodel = ImageModel(
 )
 
 mh = MetropolisHastings(
-    num_iters=50,
+    num_iters=150,
     locs_stdev=0.1,
     fluxes_stdev=100,
     fluxes_min=1300 - 2.5 * 250,
@@ -63,9 +63,9 @@ mh = MetropolisHastings(
 )
 
 aggmh = MetropolisHastings(
-    num_iters=10,
+    num_iters=50,
     locs_stdev=0.01,
-    fluxes_stdev=5,
+    fluxes_stdev=10,
     fluxes_min=1300 - 2.5 * 250,
     fluxes_max=1300 + 2.5 * 250,
 )
@@ -74,7 +74,7 @@ aggmh = MetropolisHastings(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 1000
+num_catalogs_per_count = 200
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 batch_size = 10
@@ -90,8 +90,8 @@ for b in range(num_batches):
     runtime = torch.zeros([batch_size])
     num_iters = torch.zeros([batch_size])
     counts = torch.zeros([batch_size, num_catalogs])
-    locs = torch.zeros([batch_size, num_catalogs, 8 * prior.max_objects, 2])
-    fluxes = torch.zeros([batch_size, num_catalogs, 8 * prior.max_objects])
+    locs = torch.zeros([batch_size, num_catalogs, 10 * prior.max_objects, 2])
+    fluxes = torch.zeros([batch_size, num_catalogs, 10 * prior.max_objects])
 
     for i in range(batch_size):
         image_index = b * batch_size + i
@@ -107,7 +107,7 @@ for b in range(num_batches):
             ImageModel=imagemodel,
             MutationKernel=mh,
             num_catalogs_per_count=num_catalogs_per_count,
-            ess_threshold=0.8 * num_catalogs_per_count,
+            ess_threshold=0.75 * num_catalogs_per_count,
             resample_method="multinomial",
             max_smc_iters=100,
         )
