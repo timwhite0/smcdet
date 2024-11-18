@@ -42,8 +42,8 @@ max_detections = 100
 
 print("Starting grid search...\n")
 
-thresh = torch.linspace(start=50, end=100, steps=3)
-minarea = torch.linspace(start=1, end=5, steps=3)
+thresh = torch.linspace(start=60, end=80, steps=5)
+minarea = torch.linspace(start=1, end=3, steps=3)
 deblend_cont = torch.logspace(start=-4, end=-2, steps=3)
 clean_param = torch.logspace(start=-1, end=1, steps=3)
 
@@ -73,7 +73,7 @@ for t in range(thresh.shape[0]):
                         thresh=thresh[t],
                         minarea=minarea[m],
                         deblend_cont=deblend_cont[d],
-                        deblend_nthresh=2000,
+                        deblend_nthresh=64,
                         filter_kernel=None,
                         clean=True,
                         clean_param=clean_param[c],
