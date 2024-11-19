@@ -1,5 +1,5 @@
 import torch
-from torch.distributions import Categorical, Normal, Uniform
+from torch.distributions import Categorical, Normal, Pareto, Uniform
 
 
 class PointProcessPrior(object):
@@ -105,3 +105,38 @@ class StarPrior(PointProcessPrior):
         log_prior = super().log_prob(counts, locs)
 
         return log_prior + (self.flux_prior.log_prob(fluxes) * self.counts_mask).sum(-1)
+
+
+class M2StarPrior(PointProcessPrior):
+    def __init__(self, *args, flux_scale, flux_alpha, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.flux_scale = flux_scale
+        self.flux_alpha = flux_alpha
+        self.flux_prior = Pareto(self.flux_scale, self.flux_alpha)
+
+    def sample(
+        self,
+        num_catalogs=1,
+        num_tiles_per_side=1,
+        stratify_by_count=False,
+        num_catalogs_per_count=None,
+    ):
+        counts, locs = super().sample(
+            num_catalogs, num_tiles_per_side, stratify_by_count, num_catalogs_per_count
+        )
+
+        fluxes = self.flux_prior.sample(
+            [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
+        )
+        fluxes *= self.counts_mask
+
+        return [counts, locs, fluxes]
+
+    # we define log_prob for stratify_by_count = True, to be used within SMCsampler
+    def log_prob(self, counts, locs, fluxes):
+        log_prior = super().log_prob(counts, locs)
+
+        return log_prior + (
+            self.flux_prior.log_prob(fluxes + self.flux_scale * (fluxes == 0))
+            * self.counts_mask
+        ).sum(-1)
