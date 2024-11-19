@@ -27,7 +27,7 @@ class MetropolisHastings(object):
         for iter in range(self.num_iters):
             locs_proposed = TruncatedDiagonalMVN(
                 locs_prev, self.locs_stdev, self.locs_min, self.locs_max
-            ).sample() * counts_mask.unsqueeze(4)
+            ).sample() * counts_mask.unsqueeze(-1)
             fluxes_proposed = (
                 TruncatedDiagonalMVN(
                     fluxes_prev,
@@ -45,7 +45,7 @@ class MetropolisHastings(object):
                 TruncatedDiagonalMVN(
                     locs_proposed, self.locs_stdev, self.locs_min, self.locs_max
                 ).log_prob(locs_prev)
-                * counts_mask.unsqueeze(4)
+                * counts_mask.unsqueeze(-1)
             ).sum([3, 4])
             log_num_qfluxes = (
                 TruncatedDiagonalMVN(
@@ -66,7 +66,7 @@ class MetropolisHastings(object):
                 TruncatedDiagonalMVN(
                     locs_prev, self.locs_stdev, self.locs_min, self.locs_max
                 ).log_prob(locs_proposed)
-                * counts_mask.unsqueeze(4)
+                * counts_mask.unsqueeze(-1)
             ).sum([3, 4])
             log_denom_qfluxes = (
                 TruncatedDiagonalMVN(
@@ -220,7 +220,7 @@ class MetropolisAdjustedLangevin(object):
             locs = torch.where(accept_l, locs_proposed, locs).detach()
             fluxes = torch.where(accept.unsqueeze(3), fluxes_proposed, fluxes).detach()
 
-            # Cache log denom target for next iteration
+            # cache log denom target for next iteration
             log_denom_target = torch.where(accept, log_num_target, log_denom_target)
 
         return [locs, fluxes]
