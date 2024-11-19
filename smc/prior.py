@@ -107,7 +107,7 @@ class StarPrior(PointProcessPrior):
         return log_prior + (self.flux_prior.log_prob(fluxes) * self.counts_mask).sum(-1)
 
 
-class M2StarPrior(PointProcessPrior):
+class ParetoStarPrior(PointProcessPrior):
     def __init__(self, *args, flux_scale, flux_alpha, **kwargs):
         super().__init__(*args, **kwargs)
         self.flux_scale = flux_scale
