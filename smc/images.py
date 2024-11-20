@@ -67,6 +67,16 @@ class ImageModel(object):
     def loglikelihood(self, tiled_image, locs, fluxes):
         psf = self.psf(locs)
         rate = (psf * fluxes.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
-        loglik = Poisson(rate).log_prob(tiled_image.unsqueeze(-1)).sum([-2, -3])
 
-        return loglik
+        mask = rate > 50000
+
+        loglik_poisson = Poisson(rate).log_prob(tiled_image.unsqueeze(-1))
+
+        if mask.sum() > 0:
+            loglik_normal = Normal(rate, rate.sqrt()).log_prob(
+                tiled_image.unsqueeze(-1)
+            )
+            loglik = torch.where(mask, loglik_normal, loglik_poisson).sum([-2, -3])
+            return loglik
+        else:
+            return loglik_poisson.sum([-2, -3])
