@@ -145,11 +145,11 @@ for b in range(num_batches):
         agg.summarize()
         print(f"\nruntime = {runtime[i]}\n\n\n")
 
-    torch.save(runtime.cpu(), f"results/smc/runtime_{b}.pt")
-    torch.save(num_iters.cpu(), f"results/smc/num_iters_{b}.pt")
-    torch.save(counts.cpu(), f"results/smc/counts_{b}.pt")
-    torch.save(locs.cpu(), f"results/smc/locs_{b}.pt")
-    torch.save(fluxes.cpu(), f"results/smc/fluxes_{b}.pt")
+    torch.save(runtime.cpu(), f"results/smc_mh/runtime_{b}.pt")
+    torch.save(num_iters.cpu(), f"results/smc_mh/num_iters_{b}.pt")
+    torch.save(counts.cpu(), f"results/smc_mh/counts_{b}.pt")
+    torch.save(locs.cpu(), f"results/smc_mh/locs_{b}.pt")
+    torch.save(fluxes.cpu(), f"results/smc_mh/fluxes_{b}.pt")
 
 print("Done!")
 ##############################################
