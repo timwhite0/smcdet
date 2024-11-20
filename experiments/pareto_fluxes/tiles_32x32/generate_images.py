@@ -36,7 +36,7 @@ imagemodel = ImageModel(
 # prior
 max_objects = 30
 flux_scale = 2 * background
-flux_alpha = 1.5
+flux_alpha = 1.25
 pad = 2
 prior = ParetoStarPrior(
     max_objects=max_objects + 8,
