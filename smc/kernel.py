@@ -125,8 +125,11 @@ class MetropolisHastings(object):
 
 
 class MetropolisAdjustedLangevin(object):
-    def __init__(self, num_iters, locs_step, fluxes_step, fluxes_min, fluxes_max):
-        self.num_iters = num_iters
+    def __init__(
+        self, max_iters, sqjumpdist_tol, locs_step, fluxes_step, fluxes_min, fluxes_max
+    ):
+        self.max_iters = max_iters
+        self.sqjumpdist_tol = sqjumpdist_tol
 
         self.locs_step = torch.tensor(locs_step)
         self.locs_min = None  # defined automatically within SMCsampler
@@ -141,7 +144,13 @@ class MetropolisAdjustedLangevin(object):
             0
         ) <= counts.unsqueeze(3)
 
-        for iter in range(self.num_iters):
+        locs_orig = locs
+        fluxes_orig = fluxes
+
+        locs_sqjumpdist_prev = self.sqjumpdist_tol
+        fluxes_sqjumpdist_prev = self.sqjumpdist_tol
+
+        for iter in range(self.max_iters):
             # compute gradients
             locs.requires_grad_(True)
             fluxes.requires_grad_(True)
@@ -248,5 +257,20 @@ class MetropolisAdjustedLangevin(object):
 
             # cache log denom target for next iteration
             log_denom_target = torch.where(accept, log_num_target, log_denom_target)
+
+            # check relative increase in squared jumping distance
+            locs_sqjumpdist = ((locs - locs_orig) ** 2).sum()
+            locs_stop = (
+                locs_sqjumpdist - locs_sqjumpdist_prev
+            ) / locs_sqjumpdist_prev < self.sqjumpdist_tol
+            fluxes_sqjumpdist = ((fluxes - fluxes_orig) ** 2).sum()
+            fluxes_stop = (
+                fluxes_sqjumpdist - fluxes_sqjumpdist_prev
+            ) / fluxes_sqjumpdist_prev < self.sqjumpdist_tol
+            if locs_stop and fluxes_stop:
+                break
+
+            locs_sqjumpdist_prev = locs_sqjumpdist
+            fluxes_sqjumpdist_prev = fluxes_sqjumpdist
 
         return [locs, fluxes]
