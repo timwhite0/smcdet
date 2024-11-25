@@ -5,8 +5,17 @@ from smc.distributions import TruncatedDiagonalMVN
 
 
 class MetropolisHastings(object):
-    def __init__(self, num_iters, locs_stdev, fluxes_stdev, fluxes_min, fluxes_max):
-        self.num_iters = num_iters
+    def __init__(
+        self,
+        max_iters,
+        sqjumpdist_tol,
+        locs_stdev,
+        fluxes_stdev,
+        fluxes_min,
+        fluxes_max,
+    ):
+        self.max_iters = max_iters
+        self.sqjumpdist_tol = sqjumpdist_tol
 
         self.locs_stdev = torch.tensor(locs_stdev)
         self.locs_min = None  # defined automatically within SMCsampler
@@ -24,7 +33,10 @@ class MetropolisHastings(object):
         locs_prev = locs
         fluxes_prev = fluxes
 
-        for iter in range(self.num_iters):
+        locs_sqjumpdist_prev = self.sqjumpdist_tol
+        fluxes_sqjumpdist_prev = self.sqjumpdist_tol
+
+        for iter in range(self.max_iters):
             locs_proposed = TruncatedDiagonalMVN(
                 locs_prev, self.locs_stdev, self.locs_min, self.locs_max
             ).sample() * counts_mask.unsqueeze(-1)
@@ -92,8 +104,22 @@ class MetropolisHastings(object):
             # cache denominator loglik for next iteration
             log_denom_target = log_num_target * (accept) + log_denom_target * (~accept)
 
+            # check relative increase in squared jumping distance
+            locs_sqjumpdist = ((locs_new - locs) ** 2).sum()
+            locs_stop = (
+                locs_sqjumpdist - locs_sqjumpdist_prev
+            ) / locs_sqjumpdist_prev < self.sqjumpdist_tol
+            fluxes_sqjumpdist = ((fluxes_new - fluxes) ** 2).sum()
+            fluxes_stop = (
+                fluxes_sqjumpdist - fluxes_sqjumpdist_prev
+            ) / fluxes_sqjumpdist_prev < self.sqjumpdist_tol
+            if locs_stop and fluxes_stop:
+                break
+
             locs_prev = locs_new
+            locs_sqjumpdist_prev = locs_sqjumpdist
             fluxes_prev = fluxes_new
+            fluxes_sqjumpdist_prev = fluxes_sqjumpdist
 
         return [locs_new, fluxes_new]
 
