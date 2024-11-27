@@ -22,20 +22,27 @@ class ImageModel(object):
         self.psf_grid = torch.stack([grid_h, grid_w], dim=-1)
 
     def psf(self, locs):
-        psf_grid_adjusted = self.psf_grid - (locs.unsqueeze(-2).unsqueeze(-3) - 0.5)
+        psf_grid_adjusted = self.psf_grid - (
+            rearrange(locs, "numH numW n d t -> numH numW n d 1 1 t") - 0.5
+        )
         logpsf = self.psf_density.log_prob(psf_grid_adjusted)
         psf = logpsf.exp()
         psf = rearrange(psf, "numH numW n d dimH dimW -> numH numW dimH dimW n d")
 
         return psf
 
+    def sample(self, locs, fluxes):
+        psf = self.psf(locs)
+        rate = (psf * rearrange(fluxes, "numH numW n d -> numH numW 1 1 n d")).sum(
+            -1
+        ) + self.background
+        return Poisson(rate).sample()
+
     def generate(self, Prior, num_images=1):
         catalogs = Prior.sample(num_catalogs=num_images)
         counts, locs, fluxes = catalogs
 
-        psf = self.psf(locs)
-        rate = (psf * fluxes.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
-        images = Poisson(rate).sample()
+        images = self.sample(locs, fluxes)
 
         if Prior.pad > 0:
             in_bounds = torch.all(
@@ -66,7 +73,9 @@ class ImageModel(object):
 
     def loglikelihood(self, tiled_image, locs, fluxes):
         psf = self.psf(locs)
-        rate = (psf * fluxes.unsqueeze(-3).unsqueeze(-4)).sum(-1) + self.background
+        rate = (psf * rearrange(fluxes, "numH numW n d -> numH numW 1 1 n d")).sum(
+            -1
+        ) + self.background
 
         mask = rate > 50000
 
