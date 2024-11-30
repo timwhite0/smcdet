@@ -142,7 +142,7 @@ class SingleComponentMH(MetropolisHastings):
 
         for iter in range(self.max_iters):
             # choose component to update for each catalog
-            component_mask = component_multinom.sample()
+            component_mask = torch.where(fluxes == 0, 0, component_multinom.sample())
 
             locs_proposed = locs_prev * (1 - component_mask.unsqueeze(-1)) + (
                 TruncatedDiagonalMVN(
@@ -353,6 +353,155 @@ class MetropolisAdjustedLangevin(object):
                     self.fluxes_max,
                 ).log_prob(fluxes_proposed + self.fluxes_min * (fluxes_proposed == 0))
                 * counts_mask
+            ).sum(3)
+            log_denominator = log_denom_target + log_denom_qlocs + log_denom_qfluxes
+
+            # accept or reject
+            alpha = (log_numerator - log_denominator).exp().clamp(max=1)
+            prob = torch.rand_like(alpha)
+            accept = prob <= alpha
+
+            accept_l = accept.unsqueeze(3).unsqueeze(4)
+            locs = torch.where(accept_l, locs_proposed, locs).detach()
+            fluxes = torch.where(accept.unsqueeze(3), fluxes_proposed, fluxes).detach()
+
+            # cache log denom target for next iteration
+            log_denom_target = torch.where(accept, log_num_target, log_denom_target)
+
+            # check relative increase in squared jumping distance
+            locs_sqjumpdist = ((locs - locs_orig) ** 2).sum()
+            locs_stop = (
+                locs_sqjumpdist - locs_sqjumpdist_prev
+            ) / locs_sqjumpdist_prev < self.sqjumpdist_tol
+            fluxes_sqjumpdist = ((fluxes - fluxes_orig) ** 2).sum()
+            fluxes_stop = (
+                fluxes_sqjumpdist - fluxes_sqjumpdist_prev
+            ) / fluxes_sqjumpdist_prev < self.sqjumpdist_tol
+            if locs_stop and fluxes_stop and iter > 0.1 * self.max_iters:
+                break
+
+            locs_sqjumpdist_prev = locs_sqjumpdist
+            fluxes_sqjumpdist_prev = fluxes_sqjumpdist
+
+        return [locs, fluxes]
+
+
+class SingleComponentMALA(MetropolisAdjustedLangevin):
+    # overwrite MetropolisAdjustedLangevin.run()
+    def run(self, data, counts, locs, fluxes, temperature, log_target):
+        counts_mask = torch.arange(1, locs.shape[-2] + 1).unsqueeze(
+            0
+        ) <= counts.unsqueeze(3)
+        component_multinom = Multinomial(
+            total_count=1, probs=1 / locs.shape[-2] * counts_mask + 1e-8
+        )
+
+        locs_orig = locs
+        fluxes_orig = fluxes
+
+        locs_sqjumpdist_prev = self.sqjumpdist_tol
+        fluxes_sqjumpdist_prev = self.sqjumpdist_tol
+
+        for iter in range(self.max_iters):
+            # choose component to update for each catalog
+            component_mask = torch.where(fluxes == 0, 0, component_multinom.sample())
+
+            # compute gradients
+            locs.requires_grad_(True)
+            fluxes.requires_grad_(True)
+            logtarg = log_target(data, counts, locs, fluxes, temperature)
+            locs_grad, fluxes_grad = torch.autograd.grad(
+                logtarg,
+                [locs, fluxes],
+                grad_outputs=torch.ones_like(logtarg),
+            )
+            locs_grad = locs_grad * component_mask.unsqueeze(-1)
+            fluxes_grad = fluxes_grad * component_mask
+
+            # propose locs
+            with torch.no_grad():
+                locs_proposed_qmean = locs + 0.5 * (self.locs_step**2) * locs_grad
+                locs_proposed = locs * (
+                    1 - component_mask.unsqueeze(-1)
+                ) + TruncatedDiagonalMVN(
+                    locs_proposed_qmean, self.locs_step, self.locs_min, self.locs_max
+                ).sample() * component_mask.unsqueeze(
+                    -1
+                )
+
+            # propose fluxes
+            with torch.no_grad():
+                fluxes_proposed_qmean = (
+                    fluxes + 0.5 * (self.fluxes_step**2) * fluxes_grad
+                )
+                fluxes_proposed = fluxes * (1 - component_mask) + (
+                    TruncatedDiagonalMVN(
+                        fluxes_proposed_qmean,
+                        self.fluxes_step,
+                        self.fluxes_min,
+                        self.fluxes_max,
+                    ).sample()
+                    * component_mask
+                )
+
+            # compute log numerator
+            locs_proposed.requires_grad_(True)
+            fluxes_proposed.requires_grad_(True)
+
+            log_num_target = log_target(
+                data, counts, locs_proposed, fluxes_proposed, temperature
+            )
+            locs_proposed_grad, fluxes_proposed_grad = torch.autograd.grad(
+                log_num_target,
+                [locs_proposed, fluxes_proposed],
+                grad_outputs=torch.ones_like(log_num_target),
+            )
+            locs_proposed_grad = locs_proposed_grad * component_mask.unsqueeze(-1)
+            fluxes_proposed_grad = fluxes_proposed_grad * component_mask
+
+            with torch.no_grad():
+                locs_qmean = (
+                    locs_proposed + 0.5 * (self.locs_step**2) * locs_proposed_grad
+                )
+                fluxes_qmean = (
+                    fluxes_proposed + 0.5 * (self.fluxes_step**2) * fluxes_proposed_grad
+                )
+
+            log_num_qlocs = (
+                TruncatedDiagonalMVN(
+                    locs_qmean, self.locs_step, self.locs_min, self.locs_max
+                ).log_prob(locs)
+                * component_mask.unsqueeze(-1)
+            ).sum([3, 4])
+            log_num_qfluxes = (
+                TruncatedDiagonalMVN(
+                    fluxes_qmean + self.fluxes_min * (fluxes_proposed == 0),
+                    self.fluxes_step,
+                    self.fluxes_min,
+                    self.fluxes_max,
+                ).log_prob(fluxes + self.fluxes_min * (fluxes == 0))
+                * component_mask
+            ).sum(3)
+            log_numerator = log_num_target + log_num_qlocs + log_num_qfluxes
+
+            # compute log denominator
+            if iter == 0:
+                log_denom_target = logtarg
+
+            log_denom_qlocs = (
+                TruncatedDiagonalMVN(
+                    locs_proposed_qmean, self.locs_step, self.locs_min, self.locs_max
+                ).log_prob(locs_proposed)
+                * component_mask.unsqueeze(-1)
+            ).sum([3, 4])
+            log_denom_qfluxes = (
+                TruncatedDiagonalMVN(
+                    fluxes_proposed_qmean + self.fluxes_min * (fluxes == 0),
+                    self.fluxes_step,
+                    self.fluxes_min,
+                    self.fluxes_max,
+                ).log_prob(fluxes_proposed + self.fluxes_min * (fluxes_proposed == 0))
+                * component_mask
             ).sum(3)
             log_denominator = log_denom_target + log_denom_qlocs + log_denom_qfluxes
 
