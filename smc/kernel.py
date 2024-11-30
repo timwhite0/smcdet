@@ -1,5 +1,5 @@
 import torch
-from torch.distributions import Uniform
+from torch.distributions import Multinomial, Uniform
 
 from smc.distributions import TruncatedDiagonalMVN
 
@@ -113,7 +113,117 @@ class MetropolisHastings(object):
             fluxes_stop = (
                 fluxes_sqjumpdist - fluxes_sqjumpdist_prev
             ) / fluxes_sqjumpdist_prev < self.sqjumpdist_tol
-            if locs_stop and fluxes_stop:
+            if locs_stop and fluxes_stop and iter > 0.1 * self.max_iters:
+                break
+
+            locs_prev = locs_new
+            locs_sqjumpdist_prev = locs_sqjumpdist
+            fluxes_prev = fluxes_new
+            fluxes_sqjumpdist_prev = fluxes_sqjumpdist
+
+        return [locs_new, fluxes_new]
+
+
+class SingleComponentMH(MetropolisHastings):
+    # overwrite MetropolisHastings.run
+    def run(self, data, counts, locs, fluxes, temperature, log_target):
+        counts_mask = torch.arange(1, locs.shape[-2] + 1).unsqueeze(
+            0
+        ) <= counts.unsqueeze(3)
+        component_multinom = Multinomial(
+            total_count=1, probs=1 / locs.shape[-2] * counts_mask + 1e-8
+        )
+
+        locs_prev = locs
+        fluxes_prev = fluxes
+
+        locs_sqjumpdist_prev = self.sqjumpdist_tol
+        fluxes_sqjumpdist_prev = self.sqjumpdist_tol
+
+        for iter in range(self.max_iters):
+            # choose component to update for each catalog
+            component_mask = component_multinom.sample()
+
+            locs_proposed = locs_prev * (1 - component_mask.unsqueeze(-1)) + (
+                TruncatedDiagonalMVN(
+                    locs_prev, self.locs_stdev, self.locs_min, self.locs_max
+                ).sample()
+                * component_mask.unsqueeze(-1)
+            )
+            fluxes_proposed = fluxes_prev * (1 - component_mask) + (
+                TruncatedDiagonalMVN(
+                    fluxes_prev,
+                    self.fluxes_stdev,
+                    self.fluxes_min,
+                    self.fluxes_max,
+                ).sample()
+                * component_mask
+            )
+
+            log_num_target = log_target(
+                data, counts, locs_proposed, fluxes_proposed, temperature
+            )
+            log_num_qlocs = (
+                TruncatedDiagonalMVN(
+                    locs_proposed, self.locs_stdev, self.locs_min, self.locs_max
+                ).log_prob(locs_prev)
+                * component_mask.unsqueeze(-1)
+            ).sum([3, 4])
+            log_num_qfluxes = (
+                TruncatedDiagonalMVN(
+                    fluxes_proposed + self.fluxes_min * (fluxes_proposed == 0),
+                    self.fluxes_stdev,
+                    self.fluxes_min,
+                    self.fluxes_max,
+                ).log_prob(fluxes_prev + self.fluxes_min * (fluxes_prev == 0))
+                * component_mask
+            ).sum(3)
+            log_numerator = log_num_target + log_num_qlocs + log_num_qfluxes
+
+            if iter == 0:
+                log_denom_target = log_target(
+                    data, counts, locs_prev, fluxes_prev, temperature
+                )
+            log_denom_qlocs = (
+                TruncatedDiagonalMVN(
+                    locs_prev, self.locs_stdev, self.locs_min, self.locs_max
+                ).log_prob(locs_proposed)
+                * component_mask.unsqueeze(-1)
+            ).sum([3, 4])
+            log_denom_qfluxes = (
+                TruncatedDiagonalMVN(
+                    fluxes_prev + self.fluxes_min * (fluxes_prev == 0),
+                    self.fluxes_stdev,
+                    self.fluxes_min,
+                    self.fluxes_max,
+                ).log_prob(fluxes_proposed + self.fluxes_min * (fluxes_proposed == 0))
+                * component_mask
+            ).sum(3)
+            log_denominator = log_denom_target + log_denom_qlocs + log_denom_qfluxes
+
+            alpha = (log_numerator - log_denominator).exp().clamp(max=1)
+            prob = Uniform(torch.zeros_like(counts), torch.ones_like(counts)).sample()
+            accept = prob <= alpha
+
+            accept_l = (accept).unsqueeze(3).unsqueeze(4)
+            locs_new = locs_proposed * (accept_l) + locs_prev * (~accept_l)
+
+            accept_f = (accept).unsqueeze(3)
+            fluxes_new = fluxes_proposed * (accept_f) + fluxes_prev * (~accept_f)
+
+            # cache denominator loglik for next iteration
+            log_denom_target = log_num_target * (accept) + log_denom_target * (~accept)
+
+            # check relative increase in squared jumping distance
+            locs_sqjumpdist = ((locs_new - locs) ** 2).sum()
+            locs_stop = (
+                locs_sqjumpdist - locs_sqjumpdist_prev
+            ) / locs_sqjumpdist_prev < self.sqjumpdist_tol
+            fluxes_sqjumpdist = ((fluxes_new - fluxes) ** 2).sum()
+            fluxes_stop = (
+                fluxes_sqjumpdist - fluxes_sqjumpdist_prev
+            ) / fluxes_sqjumpdist_prev < self.sqjumpdist_tol
+            if locs_stop and fluxes_stop and iter > 0.1 * self.max_iters:
                 break
 
             locs_prev = locs_new
@@ -267,7 +377,7 @@ class MetropolisAdjustedLangevin(object):
             fluxes_stop = (
                 fluxes_sqjumpdist - fluxes_sqjumpdist_prev
             ) / fluxes_sqjumpdist_prev < self.sqjumpdist_tol
-            if locs_stop and fluxes_stop:
+            if locs_stop and fluxes_stop and iter > 0.1 * self.max_iters:
                 break
 
             locs_sqjumpdist_prev = locs_sqjumpdist
