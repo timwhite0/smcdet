@@ -275,7 +275,11 @@ class MetropolisAdjustedLangevin(object):
 
             with torch.no_grad():
                 # propose locs
-                locs_proposed_qmean = locs + 0.5 * (self.locs_step**2) * locs_grad
+                locs_proposed_qmean = (
+                    locs + 0.5 * (self.locs_step**2) * locs_grad
+                ).clamp(min=self.locs_min, max=self.locs_max) * counts_mask.unsqueeze(
+                    -1
+                )
                 locs_proposed = TruncatedDiagonalMVN(
                     locs_proposed_qmean, self.locs_step, self.locs_min, self.locs_max
                 ).sample() * counts_mask.unsqueeze(-1)
@@ -283,7 +287,7 @@ class MetropolisAdjustedLangevin(object):
                 # propose fluxes
                 fluxes_proposed_qmean = (
                     fluxes + 0.5 * (self.fluxes_step**2) * fluxes_grad
-                )
+                ).clamp(min=self.fluxes_min, max=self.fluxes_max) * counts_mask
                 fluxes_proposed = (
                     TruncatedDiagonalMVN(
                         fluxes_proposed_qmean,
@@ -312,10 +316,12 @@ class MetropolisAdjustedLangevin(object):
             with torch.no_grad():
                 locs_qmean = (
                     locs_proposed + 0.5 * (self.locs_step**2) * locs_proposed_grad
+                ).clamp(min=self.locs_min, max=self.locs_max) * counts_mask.unsqueeze(
+                    -1
                 )
                 fluxes_qmean = (
                     fluxes_proposed + 0.5 * (self.fluxes_step**2) * fluxes_proposed_grad
-                )
+                ).clamp(min=self.fluxes_min, max=self.fluxes_max) * counts_mask
 
                 log_num_qlocs = (
                     TruncatedDiagonalMVN(
@@ -426,7 +432,13 @@ class SingleComponentMALA(MetropolisAdjustedLangevin):
 
             with torch.no_grad():
                 # propose locs
-                locs_proposed_qmean = locs + 0.5 * (self.locs_step**2) * locs_grad
+                locs_proposed_qmean = (
+                    locs + 0.5 * (self.locs_step**2) * locs_grad
+                ).clamp(
+                    min=self.locs_min, max=self.locs_max
+                ) * component_mask.unsqueeze(
+                    -1
+                )
                 locs_proposed = locs * (
                     1 - component_mask.unsqueeze(-1)
                 ) + TruncatedDiagonalMVN(
@@ -438,7 +450,7 @@ class SingleComponentMALA(MetropolisAdjustedLangevin):
                 # propose fluxes
                 fluxes_proposed_qmean = (
                     fluxes + 0.5 * (self.fluxes_step**2) * fluxes_grad
-                )
+                ).clamp(min=self.fluxes_min, max=self.fluxes_max) * component_mask
                 fluxes_proposed = fluxes * (1 - component_mask) + (
                     TruncatedDiagonalMVN(
                         fluxes_proposed_qmean,
@@ -467,10 +479,14 @@ class SingleComponentMALA(MetropolisAdjustedLangevin):
             with torch.no_grad():
                 locs_qmean = (
                     locs_proposed + 0.5 * (self.locs_step**2) * locs_proposed_grad
+                ).clamp(
+                    min=self.locs_min, max=self.locs_max
+                ) * component_mask.unsqueeze(
+                    -1
                 )
                 fluxes_qmean = (
                     fluxes_proposed + 0.5 * (self.fluxes_step**2) * fluxes_proposed_grad
-                )
+                ).clamp(min=self.fluxes_min, max=self.fluxes_max) * component_mask
 
                 log_num_qlocs = (
                     TruncatedDiagonalMVN(
