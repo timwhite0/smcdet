@@ -15,7 +15,7 @@ class TruncatedDiagonalMVN(Distribution):
 
         self.base_dist = Normal(mu, sigma)
         prob_in_box_hw = self.base_dist.cdf(self.ub) - self.base_dist.cdf(self.lb)
-        self.log_prob_in_box = prob_in_box_hw.log()
+        self.log_prob_in_box = prob_in_box_hw.log().nan_to_num()
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.base_dist})"
@@ -26,7 +26,7 @@ class TruncatedDiagonalMVN(Distribution):
 
         p = torch.rand(shape).clamp(min=1e-6, max=1.0 - 1e-6)
         p_tilde = self.base_dist.cdf(self.lb) + p * (self.log_prob_in_box.exp())
-        x = self.base_dist.icdf(p_tilde)
+        x = self.base_dist.icdf(p_tilde.clamp(min=1e-6, max=1.0 - 1e-6))
 
         return x.clamp(min=self.lb, max=self.ub)
 
