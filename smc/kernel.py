@@ -95,10 +95,10 @@ class MetropolisHastings(object):
             prob = Uniform(torch.zeros_like(counts), torch.ones_like(counts)).sample()
             accept = prob <= alpha
 
-            accept_l = (accept).unsqueeze(3).unsqueeze(4)
+            accept_l = (accept).unsqueeze(-1).unsqueeze(-1)
             locs_new = locs_proposed * (accept_l) + locs_prev * (~accept_l)
 
-            accept_f = (accept).unsqueeze(3)
+            accept_f = (accept).unsqueeze(-1)
             fluxes_new = fluxes_proposed * (accept_f) + fluxes_prev * (~accept_f)
 
             # cache denominator loglik for next iteration
@@ -205,10 +205,10 @@ class SingleComponentMH(MetropolisHastings):
             prob = Uniform(torch.zeros_like(counts), torch.ones_like(counts)).sample()
             accept = prob <= alpha
 
-            accept_l = (accept).unsqueeze(3).unsqueeze(4)
+            accept_l = (accept).unsqueeze(-1).unsqueeze(-1)
             locs_new = locs_proposed * (accept_l) + locs_prev * (~accept_l)
 
-            accept_f = (accept).unsqueeze(3)
+            accept_f = (accept).unsqueeze(-1)
             fluxes_new = fluxes_proposed * (accept_f) + fluxes_prev * (~accept_f)
 
             # cache denominator loglik for next iteration
@@ -371,10 +371,10 @@ class MetropolisAdjustedLangevin(object):
                 prob = torch.rand_like(alpha)
                 accept = prob <= alpha
 
-                accept_l = accept.unsqueeze(3).unsqueeze(4)
+                accept_l = accept.unsqueeze(-1).unsqueeze(-1)
                 locs = torch.where(accept_l, locs_proposed, locs).detach()
                 fluxes = torch.where(
-                    accept.unsqueeze(3), fluxes_proposed, fluxes
+                    accept.unsqueeze(-1), fluxes_proposed, fluxes
                 ).detach()
 
                 # cache log denom target for next iteration
@@ -537,10 +537,10 @@ class SingleComponentMALA(MetropolisAdjustedLangevin):
                 prob = torch.rand_like(alpha)
                 accept = prob <= alpha
 
-                accept_l = accept.unsqueeze(3).unsqueeze(4)
+                accept_l = accept.unsqueeze(-1).unsqueeze(-1)
                 locs = torch.where(accept_l, locs_proposed, locs).detach()
                 fluxes = torch.where(
-                    accept.unsqueeze(3), fluxes_proposed, fluxes
+                    accept.unsqueeze(-1), fluxes_proposed, fluxes
                 ).detach()
 
                 # cache log denom target for next iteration
