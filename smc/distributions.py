@@ -26,7 +26,7 @@ class TruncatedDiagonalMVN(Distribution):
 
         p = torch.rand(shape).clamp(min=1e-6, max=1.0 - 1e-6)
         p_tilde = self.base_dist.cdf(self.lb) + p * (self.log_prob_in_box.exp())
-        x = self.base_dist.icdf(p_tilde)
+        x = self.base_dist.icdf(p_tilde.clamp(min=1e-6, max=1.0 - 1e-6))
 
         return x.clamp(min=self.lb, max=self.ub)
 
