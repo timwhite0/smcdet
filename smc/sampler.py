@@ -30,6 +30,7 @@ class SMCsampler(object):
         self.MutationKernel = MutationKernel
         self.MutationKernel.locs_min = self.Prior.loc_prior.low
         self.MutationKernel.locs_max = self.Prior.loc_prior.high
+        self.mutation_acc_rates = None
 
         self.max_objects = self.Prior.max_objects
         self.num_counts = self.max_objects + 1  # num_counts = |{0,1,2,...,max_objects}|
@@ -180,7 +181,7 @@ class SMCsampler(object):
             )
 
     def mutate(self):
-        self.locs, self.fluxes = self.MutationKernel.run(
+        self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
             self.tiled_image,
             self.counts,
             self.locs,
@@ -226,7 +227,13 @@ class SMCsampler(object):
             self.iter += 1
 
             if self.iter % self.print_every == 0:
-                print(f"iteration {self.iter}, temperature = {self.temperature.item()}")
+                print(
+                    (
+                        f"iteration {self.iter}: temperature = {self.temperature.item()}, "
+                        f"mcmc acceptance rate in [{self.mutation_acc_rates.min()}, "
+                        f"{self.mutation_acc_rates.max()}]"
+                    )
+                )
 
             self.resample()
             self.mutate()

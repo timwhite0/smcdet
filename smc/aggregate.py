@@ -27,6 +27,7 @@ class Aggregate(object):
         self.MutationKernel = deepcopy(MutationKernel)
         self.MutationKernel.locs_min = self.Prior.loc_prior.low
         self.MutationKernel.locs_max = self.Prior.loc_prior.high
+        self.mutation_acc_rates = None
 
         self.temperature_prev = torch.zeros(1)
         self.temperature = torch.zeros(1)
@@ -133,7 +134,7 @@ class Aggregate(object):
         self.temperature = self.temperature + delta
 
     def mutate(self):
-        self.locs, self.fluxes = self.MutationKernel.run(
+        self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
             self.data,
             self.counts,
             self.locs,
@@ -297,7 +298,11 @@ class Aggregate(object):
 
                 if self.iter % self.print_every == 0:
                     print(
-                        f"iteration {self.iter}, temperature = {self.temperature.item()}"
+                        (
+                            f"iteration {self.iter}: temperature = {self.temperature.item()}, "
+                            f"mcmc acceptance rate in [{self.mutation_acc_rates.min()}, "
+                            f"{self.mutation_acc_rates.max()}]"
+                        )
                     )
 
                 index = self.get_resampled_index(self.weights, 1)

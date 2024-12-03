@@ -121,7 +121,7 @@ class MetropolisHastings(object):
             fluxes_prev = fluxes_new
             fluxes_sqjumpdist_prev = fluxes_sqjumpdist
 
-        return [locs_new, fluxes_new]
+        return [locs_new, fluxes_new, accept.float().mean(-1)]
 
 
 class SingleComponentMH(MetropolisHastings):
@@ -231,7 +231,7 @@ class SingleComponentMH(MetropolisHastings):
             fluxes_prev = fluxes_new
             fluxes_sqjumpdist_prev = fluxes_sqjumpdist
 
-        return [locs_new, fluxes_new]
+        return [locs_new, fluxes_new, accept.float().mean(-1)]
 
 
 class MetropolisAdjustedLangevin(object):
@@ -395,7 +395,7 @@ class MetropolisAdjustedLangevin(object):
                 locs_sqjumpdist_prev = locs_sqjumpdist
                 fluxes_sqjumpdist_prev = fluxes_sqjumpdist
 
-        return [locs, fluxes]
+        return [locs, fluxes, accept.float().mean(-1)]
 
 
 class SingleComponentMALA(MetropolisAdjustedLangevin):
@@ -561,4 +561,4 @@ class SingleComponentMALA(MetropolisAdjustedLangevin):
                 locs_sqjumpdist_prev = locs_sqjumpdist
                 fluxes_sqjumpdist_prev = fluxes_sqjumpdist
 
-        return [locs, fluxes]
+        return [locs, fluxes, accept.float().mean(-1)]
