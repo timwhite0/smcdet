@@ -13,7 +13,7 @@ import torch
 
 from smc.aggregate import Aggregate
 from smc.images import ImageModel
-from smc.kernel import MetropolisAdjustedLangevin
+from smc.kernel import SingleComponentMALA
 from smc.prior import StarPrior
 from smc.sampler import SMCsampler
 from utils.misc import select_cuda_device
@@ -54,18 +54,20 @@ imagemodel = ImageModel(
     image_height=tile_dim, image_width=tile_dim, psf_stdev=1.0, background=300
 )
 
-mh = MetropolisAdjustedLangevin(
-    num_iters=75,
-    locs_step=0.1,
-    fluxes_step=100,
+mh = SingleComponentMALA(
+    max_iters=100,
+    sqjumpdist_tol=1e-2,
+    locs_step=0.5,
+    fluxes_step=200,
     fluxes_min=1300 - 2.5 * 250,
     fluxes_max=1300 + 2.5 * 250,
 )
 
-aggmh = MetropolisAdjustedLangevin(
-    num_iters=25,
-    locs_step=0.01,
-    fluxes_step=10,
+aggmh = SingleComponentMALA(
+    max_iters=50,
+    sqjumpdist_tol=5e-2,
+    locs_step=0.25,
+    fluxes_step=50,
     fluxes_min=1300 - 2.5 * 250,
     fluxes_max=1300 + 2.5 * 250,
 )
@@ -126,8 +128,8 @@ for b in range(num_batches):
             sampler.fluxes,
             sampler.weights_intercount,
             resample_method="multinomial",
-            merge_method="lw_mixture",
-            merge_multiplier=2,
+            merge_method="naive",
+            merge_multiplier=1,
             ess_threshold=(sampler.Prior.max_objects + 1) * sampler.ess_threshold,
         )
 
