@@ -13,7 +13,7 @@ import torch
 
 from smc.aggregate import Aggregate
 from smc.images import ImageModel
-from smc.kernel import MetropolisHastings
+from smc.kernel import SingleComponentMH
 from smc.prior import StarPrior
 from smc.sampler import SMCsampler
 from utils.misc import select_cuda_device
@@ -54,18 +54,20 @@ imagemodel = ImageModel(
     image_height=tile_dim, image_width=tile_dim, psf_stdev=1.0, background=300
 )
 
-mh = MetropolisHastings(
-    num_iters=100,
-    locs_stdev=0.1,
+mh = SingleComponentMH(
+    max_iters=100,
+    sqjumpdist_tol=1e-2,
+    locs_stdev=0.25,
     fluxes_stdev=100,
     fluxes_min=1300 - 2.5 * 250,
     fluxes_max=1300 + 2.5 * 250,
 )
 
-aggmh = MetropolisHastings(
-    num_iters=10,
-    locs_stdev=0.01,
-    fluxes_stdev=5,
+aggmh = SingleComponentMH(
+    max_iters=50,
+    sqjumpdist_tol=5e-2,
+    locs_stdev=0.1,
+    fluxes_stdev=50,
     fluxes_min=1300 - 2.5 * 250,
     fluxes_max=1300 + 2.5 * 250,
 )
@@ -145,11 +147,11 @@ for b in range(num_batches):
         agg.summarize()
         print(f"\nruntime = {runtime[i]}\n\n\n")
 
-    torch.save(runtime.cpu(), f"results/smc/runtime_{b}.pt")
-    torch.save(num_iters.cpu(), f"results/smc/num_iters_{b}.pt")
-    torch.save(counts.cpu(), f"results/smc/counts_{b}.pt")
-    torch.save(locs.cpu(), f"results/smc/locs_{b}.pt")
-    torch.save(fluxes.cpu(), f"results/smc/fluxes_{b}.pt")
+    torch.save(runtime.cpu(), f"results/smc_mh/runtime_{b}.pt")
+    torch.save(num_iters.cpu(), f"results/smc_mh/num_iters_{b}.pt")
+    torch.save(counts.cpu(), f"results/smc_mh/counts_{b}.pt")
+    torch.save(locs.cpu(), f"results/smc_mh/locs_{b}.pt")
+    torch.save(fluxes.cpu(), f"results/smc_mh/fluxes_{b}.pt")
 
 print("Done!")
 ##############################################
