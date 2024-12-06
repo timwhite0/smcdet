@@ -13,7 +13,7 @@ import torch
 
 from smc.aggregate import Aggregate
 from smc.images import ImageModel
-from smc.kernel import MetropolisAdjustedLangevin
+from smc.kernel import SingleComponentMALA
 from smc.prior import ParetoStarPrior
 from smc.sampler import SMCsampler
 from utils.misc import select_cuda_device
@@ -54,18 +54,20 @@ imagemodel = ImageModel(
     image_height=tile_dim, image_width=tile_dim, psf_stdev=1.0, background=300
 )
 
-mala = MetropolisAdjustedLangevin(
-    num_iters=100,
-    locs_step=0.1,
-    fluxes_step=100,
+mala = SingleComponentMALA(
+    max_iters=100,
+    sqjumpdist_tol=1e-2,
+    locs_step=0.25,
+    fluxes_step=250,
     fluxes_min=prior.flux_scale,
     fluxes_max=1e6,
 )
 
-aggmala = MetropolisAdjustedLangevin(
-    num_iters=10,
-    locs_step=0.01,
-    fluxes_step=50,
+aggmala = SingleComponentMALA(
+    max_iters=50,
+    sqjumpdist_tol=5e-2,
+    locs_step=0.1,
+    fluxes_step=200,
     fluxes_min=prior.flux_scale,
     fluxes_max=1e6,
 )
