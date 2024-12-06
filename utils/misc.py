@@ -1,7 +1,7 @@
 import subprocess
 
 
-def select_cuda_device(min_free_mb=11000):
+def select_cuda_device(min_free_mb=10000):
     available_devices = []
 
     nvidia_smi = subprocess.run(
