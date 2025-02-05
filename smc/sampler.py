@@ -124,7 +124,7 @@ class SMCsampler(object):
                     else:
                         solutions[h, w, c] = 1 - self.temperature.item()
 
-        delta = solutions.quantile(0.1, dim=-1).min()
+        delta = solutions.quantile(0.5, dim=-1).min()
 
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + delta
