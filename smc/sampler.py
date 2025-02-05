@@ -100,6 +100,7 @@ class SMCsampler(object):
         self.loglik = self.ImageModel.loglikelihood(
             self.tiled_image, self.locs, self.fluxes
         )
+        loglik = self.loglik.cpu()
 
         solutions = torch.zeros(
             self.num_tiles_per_side, self.num_tiles_per_side, self.num_counts
@@ -114,7 +115,7 @@ class SMCsampler(object):
 
                     def func(delta):
                         return self.tempering_objective(
-                            self.loglik[h, w, lower:upper], delta
+                            loglik[h, w, lower:upper], delta
                         )
 
                     if func(1 - self.temperature.item()) < 0:

@@ -112,6 +112,7 @@ class Aggregate(object):
 
     def temper(self):
         self.loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.fluxes)
+        loglik = self.loglik.cpu()
 
         solutions = torch.zeros(self.numH, self.numW)
 
@@ -119,7 +120,7 @@ class Aggregate(object):
             for w in range(self.numW):
 
                 def func(delta):
-                    return self.tempering_objective(self.loglik[h, w], delta)
+                    return self.tempering_objective(loglik[h, w], delta)
 
                 if func(1 - self.temperature.item()) < 0:
                     solutions[h, w] = brentq(
