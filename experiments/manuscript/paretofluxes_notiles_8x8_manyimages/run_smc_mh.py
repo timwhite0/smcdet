@@ -105,8 +105,8 @@ for b in range(num_batches):
     runtime = torch.zeros([batch_size])
     num_iters = torch.zeros([batch_size])
     counts = torch.zeros([batch_size, num_catalogs])
-    locs = torch.zeros([batch_size, num_catalogs, prior.max_objects + 1, 2])
-    fluxes = torch.zeros([batch_size, num_catalogs, prior.max_objects + 1])
+    locs = torch.zeros([batch_size, num_catalogs, prior.max_objects, 2])
+    fluxes = torch.zeros([batch_size, num_catalogs, prior.max_objects])
 
     for i in range(batch_size):
         image_index = b * batch_size + i
