@@ -304,7 +304,7 @@ class Aggregate(object):
                 if self.iter % self.print_every == 0:
                     print(
                         (
-                            f"iteration {self.iter}:"
+                            f"iteration {self.iter}: "
                             f"temperature in [{round(self.temperature.min().item(), 2)}, "
                             f"{round(self.temperature.max().item(), 2)}], "
                             f"mcmc acceptance rate in [{self.mutation_acc_rates.min()}, "
