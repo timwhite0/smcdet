@@ -29,9 +29,6 @@ class Aggregate(object):
         self.MutationKernel.locs_max = self.Prior.loc_prior.high
         self.mutation_acc_rates = None
 
-        self.temperature_prev = torch.zeros(1)
-        self.temperature = torch.zeros(1)
-
         self.data = data
         self.counts = counts
         self.locs = locs
@@ -41,6 +38,9 @@ class Aggregate(object):
 
         self.numH, self.numW, self.dimH, self.dimW = self.data.shape
         self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).int().item()
+
+        self.temperature_prev = torch.zeros(self.numH, self.numW)
+        self.temperature = torch.zeros(self.numH, self.numW)
 
         if resample_method not in {"multinomial", "systematic"}:
             raise ValueError(
@@ -99,10 +99,10 @@ class Aggregate(object):
 
         return cs, ls, fs, ws
 
-    def log_density(self, data, counts, locs, fluxes, temperature=1):
+    def log_density(self, data, counts, locs, fluxes, temperature):
         logprior = self.Prior.log_prob(counts, locs, fluxes)
         loglik = self.ImageModel.loglikelihood(data, locs, fluxes)
-        return logprior + temperature * loglik
+        return logprior + temperature.unsqueeze(-1) * loglik
 
     def tempering_objective(self, loglikelihood, delta):
         log_numerator = 2 * ((delta * loglikelihood).logsumexp(0))
@@ -122,17 +122,19 @@ class Aggregate(object):
                 def func(delta):
                     return self.tempering_objective(loglik[h, w], delta)
 
-                if func(1 - self.temperature.item()) < 0:
+                if func(1 - self.temperature[h, w].item()) < 0:
                     solutions[h, w] = brentq(
-                        func, 0.0, 1 - self.temperature.item(), xtol=1e-6, rtol=1e-6
+                        func,
+                        0.0,
+                        1 - self.temperature[h, w].item(),
+                        xtol=1e-6,
+                        rtol=1e-6,
                     )
                 else:
-                    solutions[h, w] = 1 - self.temperature.item()
-
-        delta = solutions.min()
+                    solutions[h, w] = 1 - self.temperature[h, w].item()
 
         self.temperature_prev = self.temperature
-        self.temperature = self.temperature + delta
+        self.temperature = self.temperature + solutions
 
     def mutate(self):
         self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
@@ -287,20 +289,24 @@ class Aggregate(object):
 
             self.merge(level)
 
+            self.temperature_prev = torch.zeros(self.numH, self.numW)
+            self.temperature = torch.zeros(self.numH, self.numW)
             self.temper()
 
             self.weights = (
-                (self.temperature - self.temperature_prev)
+                (self.temperature - self.temperature_prev).unsqueeze(-1)
                 * self.ImageModel.loglikelihood(self.data, self.locs, self.fluxes)
             ).softmax(-1)
 
-            while self.temperature < 1:
+            while torch.any(self.temperature < 1):
                 self.iter += 1
 
                 if self.iter % self.print_every == 0:
                     print(
                         (
-                            f"iteration {self.iter}: temperature = {self.temperature.item()}, "
+                            f"iteration {self.iter}:"
+                            f"temperature in [{round(self.temperature.min().item(), 2)}, "
+                            f"{round(self.temperature.max().item(), 2)}], "
                             f"mcmc acceptance rate in [{self.mutation_acc_rates.min()}, "
                             f"{self.mutation_acc_rates.max()}]"
                         )
@@ -317,13 +323,9 @@ class Aggregate(object):
                 self.temper()
 
                 self.weights = (
-                    (self.temperature - self.temperature_prev)
+                    (self.temperature - self.temperature_prev).unsqueeze(-1)
                     * self.ImageModel.loglikelihood(self.data, self.locs, self.fluxes)
                 ).softmax(-1)
-
-            # reset for next merge
-            self.temperature_prev = torch.zeros(1)
-            self.temperature = torch.zeros(1)
 
         index = self.get_resampled_index(self.weights, 1)
         res = self.apply_resampled_index(index, self.counts, self.locs, self.fluxes)
