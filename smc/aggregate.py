@@ -305,10 +305,10 @@ class Aggregate(object):
                     print(
                         (
                             f"iteration {self.iter}: "
-                            f"temperature in [{round(self.temperature.min().item(), 2)}, "
-                            f"{round(self.temperature.max().item(), 2)}], "
-                            f"mcmc acceptance rate in [{self.mutation_acc_rates.min()}, "
-                            f"{self.mutation_acc_rates.max()}]"
+                            f"temperature in [{round(self.temperature.min().item(),2)}, "
+                            f"{round(self.temperature.max().item(),2)}], "
+                            f"acceptance rate in [{round(self.mutation_acc_rates.min().item(),2)}, "
+                            f"{round(self.mutation_acc_rates.max().item(),2)}]"
                         )
                     )
 
