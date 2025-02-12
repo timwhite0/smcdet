@@ -59,8 +59,10 @@ class SMCsampler(object):
         ) * (self.fluxes != 0)
 
         # initialize temperature
-        self.temperature_prev = torch.zeros(1)
-        self.temperature = torch.zeros(1)
+        self.temperature_prev = torch.zeros(
+            self.num_tiles_per_side, self.num_tiles_per_side
+        )
+        self.temperature = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
 
         # cache loglikelihood for tempering step
         self.loglik = self.ImageModel.loglikelihood(
@@ -88,7 +90,7 @@ class SMCsampler(object):
         logprior = self.Prior.log_prob(counts, locs, fluxes)
         loglik = self.ImageModel.loglikelihood(data, locs, fluxes)
 
-        return logprior + temperature * loglik
+        return logprior + temperature.unsqueeze(-1) * loglik
 
     def tempering_objective(self, loglikelihood, delta):
         log_numerator = 2 * ((delta * loglikelihood).logsumexp(0))
@@ -118,14 +120,18 @@ class SMCsampler(object):
                             loglik[h, w, lower:upper], delta
                         )
 
-                    if func(1 - self.temperature.item()) < 0:
+                    if func(1 - self.temperature[h, w].item()) < 0:
                         solutions[h, w, c] = brentq(
-                            func, 0.0, 1 - self.temperature.item(), xtol=1e-6, rtol=1e-6
+                            func,
+                            0.0,
+                            1 - self.temperature[h, w].item(),
+                            xtol=1e-6,
+                            rtol=1e-6,
                         )
                     else:
-                        solutions[h, w, c] = 1 - self.temperature.item()
+                        solutions[h, w, c] = 1 - self.temperature[h, w].item()
 
-        delta = solutions.quantile(0.5, dim=-1).min()
+        delta = solutions.min(-1).values
 
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + delta
@@ -192,8 +198,8 @@ class SMCsampler(object):
         )
 
     def update_weights(self):
-        weights_log_incremental = (
-            self.temperature - self.temperature_prev
+        weights_log_incremental = (self.temperature - self.temperature_prev).unsqueeze(
+            -1
         ) * self.loglik
 
         self.weights_log_unnorm = (
@@ -224,15 +230,17 @@ class SMCsampler(object):
         self.temper()
         self.update_weights()
 
-        while self.temperature < 1 and self.iter <= self.max_smc_iters:
+        while torch.any(self.temperature < 1) and self.iter <= self.max_smc_iters:
             self.iter += 1
 
             if self.iter % self.print_every == 0:
                 print(
                     (
-                        f"iteration {self.iter}: temperature = {self.temperature.item()}, "
-                        f"mcmc acceptance rate in [{self.mutation_acc_rates.min()}, "
-                        f"{self.mutation_acc_rates.max()}]"
+                        f"iteration {self.iter}: "
+                        f"temperature in [{round(self.temperature.min().item(), 2)}, "
+                        f"{round(self.temperature.max().item(), 2)}], "
+                        f"acceptance rate in [{round(self.mutation_acc_rates.min().item(), 2)}, "
+                        f"{round(self.mutation_acc_rates.max().item(), 2)}]"
                     )
                 )
 
