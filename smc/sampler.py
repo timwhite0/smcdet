@@ -78,7 +78,16 @@ class SMCsampler(object):
             dim=2,
         ).softmax(3)
         self.weights_intercount = self.weights_log_unnorm.softmax(2)
-        # self.log_normalizing_constant = (self.weights_log_unnorm.exp().mean(2)).log()
+        self.log_normalizing_constant = (
+            torch.stack(
+                torch.split(
+                    self.weights_log_unnorm.exp(), self.num_catalogs_per_count, dim=-1
+                ),
+                dim=-1,
+            )
+            .mean(-2)
+            .log()
+        )
 
         # set ESS thresholds
         self.ess = 1 / (self.weights_intracount**2).sum(-1)
@@ -177,15 +186,6 @@ class SMCsampler(object):
             self.weights_intracount[:, :, count_num, :] = (
                 1 / self.num_catalogs_per_count
             )
-            tmp_weights_intercount = (
-                self.weights_intercount[:, :, lower:upper].sum(2)
-                / self.num_catalogs_per_count
-            )
-            self.weights_intercount[:, :, lower:upper] = (
-                tmp_weights_intercount.unsqueeze(2).repeat(
-                    1, 1, self.num_catalogs_per_count
-                )
-            )
 
     def mutate(self):
         self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
@@ -198,29 +198,46 @@ class SMCsampler(object):
         )
 
     def update_weights(self):
-        weights_log_incremental = (self.temperature - self.temperature_prev).unsqueeze(
-            -1
-        ) * self.loglik
-
-        self.weights_log_unnorm = (
-            self.weights_intercount.log() + weights_log_incremental
+        self.weights_log_unnorm = torch.nan_to_num(
+            (self.temperature - self.temperature_prev).unsqueeze(-1) * self.loglik,
+            -torch.inf,
         )
-        self.weights_log_unnorm = torch.nan_to_num(self.weights_log_unnorm, -torch.inf)
 
         self.weights_intracount = torch.stack(
             torch.split(self.weights_log_unnorm, self.num_catalogs_per_count, dim=2),
             dim=2,
         ).softmax(3)
-        self.weights_intercount = self.weights_log_unnorm.softmax(2)
 
-        # m = self.weights_log_unnorm.max(2).values
-        # w = (self.weights_log_unnorm - m.unsqueeze(2)).exp()
-        # s = w.sum(2)
-        # self.log_normalizing_constant = (
-        #   self.log_normalizing_constant + m + (s/self.num_catalogs).log()
-        # )
+        self.ess = 1 / (self.weights_intracount**2).sum(3)
 
-        self.ESS = 1 / (self.weights_intracount**2).sum(3)
+        m = (
+            torch.stack(
+                torch.split(
+                    self.weights_log_unnorm, self.num_catalogs_per_count, dim=-1
+                ),
+                dim=-1,
+            )
+            .max(-2)
+            .values
+        )
+        w = (
+            torch.stack(
+                torch.split(
+                    self.weights_log_unnorm, self.num_catalogs_per_count, dim=-1
+                ),
+                dim=-1,
+            )
+            - m.unsqueeze(-2)
+        ).exp()
+        s = w.sum(-2)
+        self.log_normalizing_constant = (
+            self.log_normalizing_constant + m + (s / self.num_catalogs_per_count).log()
+        )
+
+        self.weights_intercount = (
+            self.weights_intracount
+            * self.log_normalizing_constant.softmax(-1).unsqueeze(-1)
+        ).flatten(-2, -1)
 
     def run(self):
         self.iter = 0
