@@ -11,7 +11,7 @@ class SMCsampler(object):
         ImageModel,
         MutationKernel,
         num_catalogs_per_count,
-        ess_threshold,
+        ess_threshold_prop,
         resample_method,
         max_smc_iters,
         print_every=5,
@@ -91,7 +91,7 @@ class SMCsampler(object):
 
         # set ESS thresholds
         self.ess = 1 / (self.weights_intracount**2).sum(-1)
-        self.ess_threshold = ess_threshold
+        self.ess_threshold = ess_threshold_prop * num_catalogs_per_count
 
         self.has_run = False
 
