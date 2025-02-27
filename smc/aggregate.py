@@ -243,25 +243,25 @@ class Aggregate(object):
 
         return dat, cs, ls, fs
 
-    def prune(self):
+    def prune(self, locs, fluxes):
         in_bounds = torch.all(
-            torch.logical_and(
-                self.locs > 0, self.locs < torch.tensor((self.dimH, self.dimW))
-            ),
+            torch.logical_and(locs > 0, locs < torch.tensor((self.dimH, self.dimW))),
             dim=-1,
         )
 
-        self.counts = in_bounds.sum(-1)
+        counts = in_bounds.sum(-1)
 
-        self.locs = in_bounds.unsqueeze(-1) * self.locs
-        locs_mask = (self.locs != 0).int()
+        locs = in_bounds.unsqueeze(-1) * locs
+        locs_mask = (locs != 0).int()
         locs_index = torch.sort(locs_mask, dim=3, descending=True)[1]
-        self.locs = torch.gather(self.locs, dim=3, index=locs_index)
+        locs = torch.gather(locs, dim=3, index=locs_index)
 
-        self.fluxes = in_bounds * self.fluxes
-        fluxes_mask = (self.fluxes != 0).int()
+        fluxes = in_bounds * fluxes
+        fluxes_mask = (fluxes != 0).int()
         fluxes_index = torch.sort(fluxes_mask, dim=3, descending=True)[1]
-        self.fluxes = torch.gather(self.fluxes, dim=3, index=fluxes_index)
+        fluxes = torch.gather(fluxes, dim=3, index=fluxes_index)
+
+        return counts, locs, fluxes
 
     def merge(self, level):
         if self.merge_method == "naive":
@@ -448,8 +448,6 @@ class Aggregate(object):
         res = self.apply_resampled_index(index, self.counts, self.locs, self.fluxes)
         self.counts, self.locs, self.fluxes, self.weights = res
 
-        self.prune()
-
         self.has_run = True
 
         print("done!\n")
@@ -460,11 +458,21 @@ class Aggregate(object):
 
     @property
     def posterior_mean_counts(self):
-        return (self.weights * self.counts).sum(-1)
+        counts, _, _ = self.prune(self.locs, self.fluxes)
+        return (self.weights * counts).sum(-1)
+
+    @property
+    def estimated_total_flux(self):
+        psf = self.ImageModel.psf(self.locs)
+        rate = (psf * self.fluxes.unsqueeze(-3).unsqueeze(-4)).sum(
+            -1
+        ) + self.ImageModel.background
+        reconstructed_image = rate.squeeze([0, 1]).permute((2, 0, 1))
+        return reconstructed_image.sum([1, 2])
 
     @property
     def posterior_mean_total_flux(self):
-        return (self.weights * self.fluxes.sum(-1)).sum(-1)
+        return (self.weights * self.estimated_total_flux).sum(-1)
 
     def summarize(self):
         if self.has_run is False:
