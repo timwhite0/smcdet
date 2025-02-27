@@ -479,9 +479,10 @@ class Aggregate(object):
             raise ValueError("aggregation procedure hasn't been run yet.")
 
         print("summary:\nposterior distribution of number of stars:")
-        print(self.counts.unique(return_counts=True)[0].cpu())
+        counts, _, _ = self.prune(self.locs, self.fluxes)
+        print(counts.unique(return_counts=True)[0].cpu())
         print(
-            (self.counts.unique(return_counts=True)[1] / self.counts.shape[-1])
+            (counts.unique(return_counts=True)[1] / counts.shape[-1])
             .round(decimals=3)
             .cpu()
         )
