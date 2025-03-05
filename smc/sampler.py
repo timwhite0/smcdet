@@ -193,7 +193,7 @@ class SMCsampler(object):
             self.counts,
             self.locs,
             self.fluxes,
-            self.temperature_prev,
+            self.temperature,
             self.log_target,
         )
 
