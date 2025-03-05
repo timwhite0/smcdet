@@ -18,8 +18,6 @@ class Aggregate(object):
         weights,
         resample_method,
         ess_threshold_prop,
-        merge_method,
-        merge_multiplier,
         print_every=5,
     ):
         self.Prior = deepcopy(Prior)
@@ -57,15 +55,6 @@ class Aggregate(object):
                 "resample_method must be either multinomial or systematic."
             )
         self.resample_method = resample_method
-
-        if merge_method not in {"naive", "lw_mixture"}:
-            raise ValueError("merge_method must be either naive or lw_mixture.")
-        self.merge_method = merge_method
-
-        if merge_method == "naive":
-            self.merge_multiplier = 1.0
-        elif merge_method == "lw_mixture":
-            self.merge_multiplier = float(merge_multiplier)
 
         self.ess_threshold_prop = ess_threshold_prop
 
@@ -109,10 +98,32 @@ class Aggregate(object):
 
         return cs, ls, fs, ws
 
-    def log_density(self, data, counts, locs, fluxes, temperature):
-        logprior = self.Prior.log_prob(counts, locs, fluxes)
-        loglik = self.ImageModel.loglikelihood(data, locs, fluxes)
-        return logprior + temperature.unsqueeze(-1) * loglik
+    def log_target(
+        self,
+        axis,
+        ChildImageModel,
+        child_data,
+        child_locs,
+        child_fluxes,
+        parent_data,
+        parent_counts,
+        parent_locs,
+        parent_fluxes,
+        temperature,
+    ):
+        logprior = self.Prior.log_prob(parent_counts, parent_locs, parent_fluxes)
+        child_loglik = ChildImageModel.loglikelihood(
+            child_data, child_locs, child_fluxes
+        )
+        parent_loglik = self.ImageModel.loglikelihood(
+            parent_data, parent_locs, parent_fluxes
+        )
+
+        return (
+            logprior
+            + (1 - temperature).unsqueeze(-1) * child_loglik.unfold(axis, 2, 2).sum(-1)
+            + temperature.unsqueeze(-1) * parent_loglik
+        )
 
     def tempering_objective(self, loglikelihood, delta):
         log_numerator = 2 * ((delta * loglikelihood).logsumexp(0))
@@ -123,26 +134,27 @@ class Aggregate(object):
         ).exp() - self.ess_threshold_prop * loglikelihood.shape[0]
 
     def temper(self):
-        self.loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.fluxes)
-        loglik = self.loglik.cpu()
+        loglik_diff = self.loglik_diff.cpu()
 
         solutions = torch.zeros(self.numH, self.numW)
 
         for h in range(self.numH):
             for w in range(self.numW):
-                loglik_split = torch.split(
-                    loglik[h, w], self.num_catalogs_per_count[h][w], dim=0
+                loglik_diff_split = torch.split(
+                    loglik_diff[h, w], self.num_catalogs_per_count[h][w], dim=0
                 )
 
-                solutions_per_tile = torch.zeros(len(self.num_catalogs_per_count[h][w]))
+                solutions_within_tile = torch.zeros(
+                    len(self.num_catalogs_per_count[h][w])
+                )
 
                 for c in range(len(self.num_catalogs_per_count[h][w])):
 
                     def func(delta):
-                        return self.tempering_objective(loglik_split[c], delta)
+                        return self.tempering_objective(loglik_diff_split[c], delta)
 
                     if func(1 - self.temperature[h, w].item()) < 0:
-                        solutions_per_tile[c] = brentq(
+                        solutions_within_tile[c] = brentq(
                             func,
                             0.0,
                             1 - self.temperature[h, w].item(),
@@ -150,21 +162,24 @@ class Aggregate(object):
                             rtol=1e-6,
                         )
                     else:
-                        solutions_per_tile[c] = 1 - self.temperature[h, w].item()
+                        solutions_within_tile[c] = 1 - self.temperature[h, w].item()
 
-                solutions[h, w] = solutions_per_tile.min()
+                solutions[h, w] = solutions_within_tile.min()
 
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + solutions
 
-    def mutate(self):
+    def mutate(self, axis, ChildImageModel):
         self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
             self.data,
             self.counts,
             self.locs,
             self.fluxes,
-            self.temperature_prev,
-            self.log_density,
+            self.temperature,
+            self.log_target,
+            self.unjoin,
+            axis,
+            ChildImageModel,
         )
 
     def drop_sources_from_overlap(self, axis, counts, locs, fluxes):
@@ -243,6 +258,67 @@ class Aggregate(object):
 
         return dat, cs, ls, fs
 
+    def unjoin(self, axis, data, locs, fluxes):
+        if axis == 0:
+            dat = rearrange(
+                data, "numH numW (t dimH) dimW -> (t numH) numW dimH dimW", t=2
+            )
+        elif axis == 1:
+            dat = rearrange(
+                data, "numH numW dimH (t dimW) -> numH (t numW) dimH dimW", t=2
+            )
+
+        mask = (
+            locs.select(-1, axis) <= (self.dimH * (1 - axis) + self.dimW * axis) / 2
+        ).int()
+
+        # split up locs
+        region1_locs = mask.unsqueeze(-1) * locs
+        region1_locs_mask = (region1_locs != 0).int()
+        region1_locs_index = torch.sort(region1_locs_mask, dim=-2, descending=True)[1]
+        region1_locs = torch.gather(region1_locs, dim=-2, index=region1_locs_index)
+
+        region2_locs = (1 - mask).unsqueeze(-1) * locs
+        region2_locs_mask = (region2_locs != 0).int()
+        region2_locs_index = torch.sort(region2_locs_mask, dim=-2, descending=True)[1]
+        region2_locs = torch.gather(region2_locs, dim=-2, index=region2_locs_index)
+
+        region2_locs_sorted_mask = (region2_locs != 0).int()
+        region2_locs.select(-1, axis)[...] -= (self.dimH / 2) * (1 - axis) + (
+            self.dimW / 2
+        ) * axis
+        region2_locs *= region2_locs_sorted_mask
+
+        new_locs = torch.cat((region1_locs, region2_locs), dim=axis)
+
+        # split up fluxes
+        region1_fluxes = mask * fluxes
+        region1_fluxes_mask = (region1_fluxes != 0).int()
+        region1_fluxes_index = torch.sort(region1_fluxes_mask, dim=-1, descending=True)[
+            1
+        ]
+        region1_fluxes = torch.gather(
+            region1_fluxes, dim=-1, index=region1_fluxes_index
+        )
+
+        region2_fluxes = (1 - mask) * fluxes
+        region2_fluxes_mask = (region2_fluxes != 0).int()
+        region2_fluxes_index = torch.sort(region2_fluxes_mask, dim=-1, descending=True)[
+            1
+        ]
+        region2_fluxes = torch.gather(
+            region2_fluxes, dim=-1, index=region2_fluxes_index
+        )
+
+        new_fluxes = torch.cat((region1_fluxes, region2_fluxes), dim=axis)
+
+        # split up counts
+        tile1_counts = (mask * (locs != 0).all(-1)).sum(-1)
+        tile2_counts = ((1 - mask) * (locs != 0).all(-1)).sum(-1)
+        new_counts = torch.cat((tile1_counts, tile2_counts), dim=axis)
+
+        return dat, new_counts, new_locs, new_fluxes
+
     def prune(self, locs, fluxes):
         in_bounds = torch.all(
             torch.logical_and(locs > 0, locs < torch.tensor((self.dimH, self.dimW))),
@@ -264,41 +340,15 @@ class Aggregate(object):
         return counts, locs, fluxes
 
     def merge(self, level):
-        if self.merge_method == "naive":
-            index = self.get_resampled_index(self.weights, 1)
-            cs, ls, fs, ws = self.apply_resampled_index(
-                index, self.counts, self.locs, self.fluxes
-            )
+        index = self.get_resampled_index(self.weights, 1)
+        cs, ls, fs, ws = self.apply_resampled_index(
+            index, self.counts, self.locs, self.fluxes
+        )
 
-            if level % 2 == 0:
-                cs, ls, fs = self.drop_sources_from_overlap(0, cs, ls, fs)
-                self.data, self.counts, self.locs, self.fluxes = self.join(
-                    0, self.data, cs, ls, fs
-                )
-            elif level % 2 != 0:
-                cs, ls, fs = self.drop_sources_from_overlap(1, cs, ls, fs)
-                self.data, self.counts, self.locs, self.fluxes = self.join(
-                    1, self.data, cs, ls, fs
-                )
-        elif self.merge_method == "lw_mixture":
-            index = self.get_resampled_index(self.weights, self.merge_multiplier)
-            cs, ls, fs, ws = self.apply_resampled_index(
-                index, self.counts, self.locs, self.fluxes
-            )
-
-            if level % 2 == 0:
-                cs, ls, fs = self.drop_sources_from_overlap(0, cs, ls, fs)
-                self.data, cs, ls, fs = self.join(0, self.data, cs, ls, fs)
-            elif level % 2 != 0:
-                cs, ls, fs = self.drop_sources_from_overlap(1, cs, ls, fs)
-                self.data, cs, ls, fs = self.join(1, self.data, cs, ls, fs)
-
-            ld = self.log_density(self.data, cs, ls, fs)
-            ws = ld.softmax(-1)
-
-            index = self.get_resampled_index(ws, 1 / self.merge_multiplier)
-            res = self.apply_resampled_index(index, cs, ls, fs)
-            self.counts, self.locs, self.fluxes, self.weights = res
+        cs, ls, fs = self.drop_sources_from_overlap(level % 2, cs, ls, fs)
+        self.data, self.counts, self.locs, self.fluxes = self.join(
+            level % 2, self.data, cs, ls, fs
+        )
 
     def sort_by_count(self):
         self.counts, indices = self.counts.sort()
@@ -324,7 +374,7 @@ class Aggregate(object):
     def update_weights(self):
         weights_log_unnorm = (self.temperature - self.temperature_prev).unsqueeze(
             -1
-        ) * self.loglik
+        ) * self.loglik_diff
 
         self.weights_intracount = torch.zeros_like(weights_log_unnorm)
         self.weights = torch.zeros_like(weights_log_unnorm)
@@ -411,16 +461,27 @@ class Aggregate(object):
         for level in range(self.num_aggregation_levels):
             print(f"level {level}")
 
-            self.iter = 0
-
+            ChildImageModel = deepcopy(self.ImageModel)
             self.merge(level)
             self.sort_by_count()
+
+            child_data, child_counts, child_locs, child_fluxes = self.unjoin(
+                level % 2, self.data, self.locs, self.fluxes
+            )
+            child_loglik = ChildImageModel.loglikelihood(
+                child_data, child_locs, child_fluxes
+            )
+            self.loglik_diff = self.ImageModel.loglikelihood(
+                self.data, self.locs, self.fluxes
+            ) - child_loglik.unfold(level % 2, 2, 2).sum(-1)
 
             self.temperature_prev = torch.zeros(self.numH, self.numW)
             self.temperature = torch.zeros(self.numH, self.numW)
             self.temper()
 
             self.update_weights()
+
+            self.iter = 0
 
             while torch.any(self.temperature < 1):
                 self.iter += 1
@@ -438,7 +499,17 @@ class Aggregate(object):
 
                 self.resample_intracount()
 
-                self.mutate()
+                self.mutate(axis=level % 2, ChildImageModel=ChildImageModel)
+
+                child_data, child_counts, child_locs, child_fluxes = self.unjoin(
+                    level % 2, self.data, self.locs, self.fluxes
+                )
+                child_loglik = ChildImageModel.loglikelihood(
+                    child_data, child_locs, child_fluxes
+                )
+                self.loglik_diff = self.ImageModel.loglikelihood(
+                    self.data, self.locs, self.fluxes
+                ) - child_loglik.unfold(level % 2, 2, 2).sum(-1)
 
                 self.temper()
 
