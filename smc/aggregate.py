@@ -16,6 +16,7 @@ class Aggregate(object):
         locs,
         fluxes,
         weights,
+        log_normalizing_constant,
         resample_method,
         ess_threshold_prop,
         print_every=5,
@@ -33,17 +34,17 @@ class Aggregate(object):
         self.fluxes = fluxes
         self.weights = weights
         self.weights_intracount = None
-        self.log_normalizing_constant = None
 
         self.numH, self.numW, self.dimH, self.dimW = self.data.shape
         self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).int().item()
 
-        self.num_catalogs = self.weights.shape[-1]
-        self.num_catalogs_per_count = [
-            [None for _ in range(self.numW)] for _ in range(self.numH)
+        self.log_normalizing_constant = [
+            [log_normalizing_constant[h, w].tolist() for w in range(self.numW)]
+            for h in range(self.numH)
         ]
 
-        self.log_normalizing_constant = [
+        self.num_catalogs = self.weights.shape[-1]
+        self.num_catalogs_per_count = [
             [None for _ in range(self.numW)] for _ in range(self.numH)
         ]
 
@@ -340,23 +341,86 @@ class Aggregate(object):
         return counts, locs, fluxes
 
     def merge(self, level):
+        marginal_counts = self.counts
+
         index = self.get_resampled_index(self.weights, 1)
-        cs, ls, fs, ws = self.apply_resampled_index(
-            index, self.counts, self.locs, self.fluxes
+        cs_resampled, ls_resampled, fs_resampled, ws_resampled = (
+            self.apply_resampled_index(index, self.counts, self.locs, self.fluxes)
         )
 
-        cs, ls, fs = self.drop_sources_from_overlap(level % 2, cs, ls, fs)
-        self.data, self.counts, self.locs, self.fluxes = self.join(
-            level % 2, self.data, cs, ls, fs
+        cs_pruned, ls_pruned, fs_pruned = self.drop_sources_from_overlap(
+            level % 2, cs_resampled, ls_resampled, fs_resampled
         )
+        self.data, self.counts, self.locs, self.fluxes = self.join(
+            level % 2, self.data, cs_pruned, ls_pruned, fs_pruned
+        )
+
+        # compute initial log normalizing constant
+        marginal_numH = self.numH * (1 + (1 - level % 2))
+        marginal_numW = self.numW * (1 + (level % 2))
+
+        marginal_log_normalizing_constant = [
+            [None for _ in range(marginal_numW)] for _ in range(marginal_numH)
+        ]
+
+        for marginal_h in range(marginal_numH):
+            for marginal_w in range(marginal_numW):
+                joint_h = marginal_h // (1 + (1 - level % 2))
+                joint_w = marginal_w // (1 + (level % 2))
+
+                unique_joint_counts = self.counts[joint_h, joint_w].unique()
+                unique_marginal_counts = marginal_counts[
+                    marginal_h, marginal_w
+                ].unique()
+
+                marginal_log_normalizing_constant[marginal_h][marginal_w] = torch.zeros(
+                    len(unique_joint_counts)
+                )
+
+                for j in range(len(unique_joint_counts)):
+                    merge_pmf = torch.zeros(len(unique_marginal_counts))
+
+                    for k in range(len(unique_marginal_counts)):
+                        merge_pmf[k] = (
+                            (
+                                cs_resampled[marginal_h, marginal_w][
+                                    self.counts[joint_h, joint_w]
+                                    == unique_joint_counts[j]
+                                ]
+                                == unique_marginal_counts[k]
+                            )
+                            .float()
+                            .mean()
+                        )
+
+                    marginal_log_normalizing_constant[marginal_h][marginal_w][j] = (
+                        (
+                            torch.tensor(
+                                self.log_normalizing_constant[marginal_h][marginal_w]
+                            )
+                            + merge_pmf.log().nan_to_num()
+                        ).logsumexp(-1)
+                    ).tolist()
+
+        self.log_normalizing_constant = [
+            [None for _ in range(self.numW)] for _ in range(self.numH)
+        ]
+
+        for joint_h in range(self.numH):
+            for joint_w in range(self.numW):
+                self.log_normalizing_constant[joint_h][joint_w] = (
+                    marginal_log_normalizing_constant[joint_h * (1 + (1 - level % 2))][
+                        joint_w * (1 + level % 2)
+                    ]
+                    + marginal_log_normalizing_constant[
+                        joint_h * (1 + (1 - level % 2)) + (1 - level % 2)
+                    ][joint_w * (1 + level % 2) + (level % 2)]
+                )
 
     def sort_by_count(self):
         self.counts, indices = self.counts.sort()
 
         self.num_catalogs_per_count = [
-            [None for _ in range(self.numW)] for _ in range(self.numH)
-        ]
-        self.log_normalizing_constant = [
             [None for _ in range(self.numW)] for _ in range(self.numH)
         ]
 
@@ -365,9 +429,6 @@ class Aggregate(object):
                 self.num_catalogs_per_count[h][w] = (
                     self.counts[h, w].unique(return_counts=True)[-1].tolist()
                 )
-                self.log_normalizing_constant[h][w] = torch.zeros_like(
-                    self.counts[h, w].unique(return_counts=True)[-1]
-                ).tolist()
                 self.fluxes[h, w] = self.fluxes[h, w].index_select(0, indices[h, w])
                 self.locs[h, w] = self.locs[h, w].index_select(0, indices[h, w])
 
