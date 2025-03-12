@@ -580,6 +580,10 @@ class Aggregate(object):
         res = self.apply_resampled_index(index, self.counts, self.locs, self.fluxes)
         self.counts, self.locs, self.fluxes, self.weights = res
 
+        self.pruned_counts, self.pruned_locs, self.pruned_fluxes = self.prune(
+            self.locs, self.fluxes
+        )
+
         self.has_run = True
 
         print("done!\n")
@@ -590,8 +594,7 @@ class Aggregate(object):
 
     @property
     def posterior_mean_counts(self):
-        counts, _, _ = self.prune(self.locs, self.fluxes)
-        return (self.weights * counts).sum(-1)
+        return (self.weights * self.pruned_counts).sum(-1)
 
     @property
     def estimated_total_flux(self):
@@ -611,10 +614,12 @@ class Aggregate(object):
             raise ValueError("aggregation procedure hasn't been run yet.")
 
         print("summary:\nposterior distribution of number of stars:")
-        counts, _, _ = self.prune(self.locs, self.fluxes)
-        print(counts.unique(return_counts=True)[0].cpu())
+        print(self.pruned_counts.unique(return_counts=True)[0].cpu())
         print(
-            (counts.unique(return_counts=True)[1] / counts.shape[-1])
+            (
+                self.pruned_counts.unique(return_counts=True)[1]
+                / self.pruned_counts.shape[-1]
+            )
             .round(decimals=3)
             .cpu()
         )
