@@ -36,14 +36,19 @@ imagemodel = ImageModel(
 )
 
 # prior
-max_objects = 8
+max_objects = 10
 # make min flux an approximately 5sigma detection
 flux_scale = 5 * np.sqrt(background) / psf_max
 # choose alpha s.t. 0.99 quantile is an approximately 50sigma detection
 flux_alpha = (-np.log(1 - 0.99)) / (
     np.log(50 * np.sqrt(background) / psf_max) - np.log(flux_scale)
 )
-pad = 1
+
+# choose padding s.t. 0.01-quantile-flux star at a distance of pad pixels outside
+# the boundary contributes the same as a min-flux star at the boundary
+quantile01_flux = flux_scale * ((1 - 0.1) ** (-1 / flux_alpha))
+pad = np.sqrt(-2 * (psf_stdev**2) * np.log(flux_scale / quantile01_flux))
+
 prior = ParetoStarPrior(
     max_objects=max_objects + 8,
     image_height=image_dim,

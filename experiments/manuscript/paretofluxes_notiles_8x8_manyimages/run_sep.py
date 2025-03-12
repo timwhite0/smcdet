@@ -32,7 +32,7 @@ num_images = images.shape[0]
 image_height = images.shape[1]
 image_width = images.shape[2]
 background = 200
-padding = 1
+padding = 1  # true padding is 0.3, but padding needs to be an int here
 padded_images = pad(images, (padding, padding, padding, padding), mode="reflect")
 max_detections = 100
 ##############################################
