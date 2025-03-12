@@ -45,11 +45,13 @@ tile_dim = 8
 psf_stdev = 0.93
 psf_max = 1 / (2 * np.pi * (psf_stdev**2))
 background = 200
-max_objects = 10
+max_objects = 12
 flux_scale = 5 * np.sqrt(background) / psf_max
 flux_alpha = (-np.log(1 - 0.99)) / (
     np.log(50 * np.sqrt(background) / psf_max) - np.log(flux_scale)
 )
+quantile01_flux = flux_scale * ((1 - 0.1) ** (-1 / flux_alpha))
+pad = np.sqrt(-2 * (psf_stdev**2) * np.log(flux_scale / quantile01_flux))
 
 prior = ParetoStarPrior(
     max_objects=max_objects,
@@ -57,7 +59,7 @@ prior = ParetoStarPrior(
     image_width=tile_dim,
     flux_scale=flux_scale,
     flux_alpha=flux_alpha,
-    pad=1,
+    pad=pad,
 )
 
 imagemodel = ImageModel(
@@ -68,8 +70,7 @@ imagemodel = ImageModel(
 )
 
 mh = SingleComponentMH(
-    max_iters=200,
-    sqjumpdist_tol=1e-2,
+    num_iters=50,
     locs_stdev=0.25,
     fluxes_stdev=250,
     fluxes_min=prior.flux_scale,
@@ -77,10 +78,9 @@ mh = SingleComponentMH(
 )
 
 aggmh = SingleComponentMH(
-    max_iters=100,
-    sqjumpdist_tol=5e-2,
+    num_iters=50,
     locs_stdev=0.1,
-    fluxes_stdev=200,
+    fluxes_stdev=100,
     fluxes_min=prior.flux_scale,
     fluxes_max=1e6,
 )
@@ -89,7 +89,7 @@ aggmh = SingleComponentMH(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND NUMBER OF RUNS
 
-num_catalogs_per_count = [50, 100, 250, 500, 1000]
+num_catalogs_per_count = [500, 2000, 5000]
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 num_runs = 100
@@ -98,7 +98,7 @@ num_runs = 100
 ##############################################
 # RUN SMC
 
-torch.manual_seed(1)
+torch.manual_seed(2)
 
 for i in range(num_images):
     print(f"image {i + 1} of {num_images}")
@@ -111,9 +111,9 @@ for i in range(num_images):
 
         runtime = torch.zeros([num_runs])
         num_iters = torch.zeros([num_runs])
-        counts = torch.zeros([num_runs, num_catalogs])
-        locs = torch.zeros([num_runs, num_catalogs, prior.max_objects, 2])
-        fluxes = torch.zeros([num_runs, num_catalogs, prior.max_objects])
+        pruned_counts = torch.zeros([num_runs, num_catalogs])
+        log_normalizing_constants = torch.zeros([num_runs, prior.max_objects + 1])
+        estimated_total_flux = torch.zeros([num_runs, num_catalogs])
 
         for r in range(num_runs):
             print(f"run {r + 1} of {num_runs}\n")
@@ -125,7 +125,7 @@ for i in range(num_images):
                 ImageModel=imagemodel,
                 MutationKernel=mh,
                 num_catalogs_per_count=num_catalogs_per_count[c],
-                ess_threshold=0.5 * num_catalogs_per_count[c],
+                ess_threshold_prop=0.5,
                 resample_method="multinomial",
                 max_smc_iters=100,
             )
@@ -143,10 +143,9 @@ for i in range(num_images):
                 sampler.locs,
                 sampler.fluxes,
                 sampler.weights_intercount,
+                sampler.log_normalizing_constant,
+                ess_threshold_prop=0.5,
                 resample_method="multinomial",
-                merge_method="naive",
-                merge_multiplier=1,
-                ess_threshold=(sampler.Prior.max_objects + 1) * sampler.ess_threshold,
             )
 
             agg.run()
@@ -155,33 +154,34 @@ for i in range(num_images):
 
             runtime[r] = end - start
             num_iters[r] = sampler.iter
-            counts[r] = agg.counts.squeeze([0, 1])
-            index = agg.locs.shape[-2]
-            locs[r, :, :index, :] = agg.locs.squeeze([0, 1])
-            fluxes[r, :, :index] = agg.fluxes.squeeze([0, 1])
+            pruned_counts[r] = agg.pruned_counts.squeeze([0, 1])
+            log_normalizing_constants[r] = sampler.log_normalizing_constant.squeeze(
+                [0, 1]
+            )
+            estimated_total_flux[r] = agg.estimated_total_flux
 
             agg.summarize()
             print(f"\nruntime = {runtime[r]}\n\n\n")
 
         torch.save(
             runtime.cpu(),
-            f"results/smc_mh/runtime_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
+            f"results/smc/runtime_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
         )
         torch.save(
             num_iters.cpu(),
-            f"results/smc_mh/num_iters_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
+            f"results/smc/num_iters_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
         )
         torch.save(
-            counts.cpu(),
-            f"results/smc_mh/counts_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
+            pruned_counts.cpu(),
+            f"results/smc/pruned_counts_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
         )
         torch.save(
-            locs.cpu(),
-            f"results/smc_mh/locs_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
+            log_normalizing_constants.cpu(),
+            f"results/smc/log_norm_const_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
         )
         torch.save(
-            fluxes.cpu(),
-            f"results/smc_mh/fluxes_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
+            estimated_total_flux.cpu(),
+            f"results/smc/total_flux_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
         )
 
 print("Done!")

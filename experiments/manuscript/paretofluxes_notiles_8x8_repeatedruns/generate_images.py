@@ -36,14 +36,19 @@ imagemodel = ImageModel(
 )
 
 # prior
-max_objects = 8
+max_objects = 10
 # make min flux an approximately 5sigma detection
 flux_scale = 5 * np.sqrt(background) / psf_max
 # choose alpha s.t. 0.99 quantile is an approximately 50sigma detection
 flux_alpha = (-np.log(1 - 0.99)) / (
     np.log(50 * np.sqrt(background) / psf_max) - np.log(flux_scale)
 )
-pad = 1
+
+# choose padding s.t. 0.01-quantile-flux star at a distance of pad pixels outside
+# the boundary contributes the same as a min-flux star at the boundary
+quantile01_flux = flux_scale * ((1 - 0.1) ** (-1 / flux_alpha))
+pad = np.sqrt(-2 * (psf_stdev**2) * np.log(flux_scale / quantile01_flux))
+
 prior = ParetoStarPrior(
     max_objects=max_objects + 8,
     image_height=image_dim,
@@ -57,33 +62,20 @@ prior = ParetoStarPrior(
 ##############################################
 # GENERATE IMAGES
 
-torch.manual_seed(121)
+torch.manual_seed(2)
 
 num_images = 100
 
 true_counts, true_locs, true_fluxes, images = imagemodel.generate(
-    Prior=prior, num_images=10 * num_images
+    Prior=prior, num_images=num_images
 )
-
-index = true_counts <= max_objects
-true_counts = true_counts[index]
-true_locs = true_locs[index]
-true_fluxes = true_fluxes[index]
-images = images[index]
-
-probs = 1 / true_counts.unique(return_counts=True)[1]
-index = torch.multinomial(probs[true_counts], num_samples=num_images, replacement=False)
-true_counts = true_counts[index]
-true_locs = true_locs[index]
-true_fluxes = true_fluxes[index]
-images = images[index]
 
 # select one image each with count = 2, 4, 6, 8
 indexes = [
-    torch.arange(images.shape[0])[true_counts == 2][3].item(),
-    torch.arange(images.shape[0])[true_counts == 4][3].item(),
-    torch.arange(images.shape[0])[true_counts == 6][3].item(),
-    torch.arange(images.shape[0])[true_counts == 8][3].item(),
+    torch.arange(images.shape[0])[true_counts == 2][0].item(),
+    torch.arange(images.shape[0])[true_counts == 4][0].item(),
+    torch.arange(images.shape[0])[true_counts == 6][0].item(),
+    torch.arange(images.shape[0])[true_counts == 8][0].item(),
 ]
 
 torch.save(true_counts[indexes].cpu(), "data/true_counts.pt")
