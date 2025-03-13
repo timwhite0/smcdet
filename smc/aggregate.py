@@ -592,28 +592,32 @@ class Aggregate(object):
     def ess(self):
         return 1 / (self.weights**2).sum(-1)
 
-    @property
-    def posterior_mean_counts(self):
-        return (self.weights * self.pruned_counts).sum(-1)
+    def posterior_mean_count(self, counts):
+        return (self.weights * counts).sum(-1)
+
+    def posterior_mean_total_flux(self, fluxes):
+        return (self.weights * fluxes.sum(-1)).sum(-1)
 
     @property
-    def estimated_total_flux(self):
-        psf = self.ImageModel.psf(self.locs)
-        rate = (psf * self.fluxes.unsqueeze(-3).unsqueeze(-4)).sum(
-            -1
-        ) + self.ImageModel.background
-        reconstructed_image = rate.squeeze([0, 1]).permute((2, 0, 1))
-        return reconstructed_image.sum([1, 2])
-
-    @property
-    def posterior_mean_total_flux(self):
-        return (self.weights * self.estimated_total_flux).sum(-1)
+    def posterior_predictive_total_observed_flux(self):
+        return self.ImageModel.sample(self.locs, self.fluxes).sum([-2, -3]).squeeze()
 
     def summarize(self):
         if self.has_run is False:
             raise ValueError("aggregation procedure hasn't been run yet.")
 
-        print("summary:\nposterior distribution of number of stars:")
+        print(
+            "summary:\n\nposterior distribution of number of stars including padding:"
+        )
+        print(self.counts.unique(return_counts=True)[0].cpu())
+        print(
+            (self.counts.unique(return_counts=True)[1] / self.counts.shape[-1])
+            .round(decimals=3)
+            .cpu(),
+            "\n",
+        )
+
+        print("posterior distribution of number of stars within image boundary:")
         print(self.pruned_counts.unique(return_counts=True)[0].cpu())
         print(
             (
@@ -621,9 +625,20 @@ class Aggregate(object):
                 / self.pruned_counts.shape[-1]
             )
             .round(decimals=3)
-            .cpu()
+            .cpu(),
+            "\n",
         )
-        print(f"\nposterior mean total flux = {self.posterior_mean_total_flux.item()}")
+
         print(
-            f"\nnumber of unique catalogs = {self.fluxes[0,0].sum(-1).unique(dim=0).shape[0]}"
+            "posterior mean total intrinsic flux including padding =",
+            f"{self.posterior_mean_total_flux(self.fluxes).round().item()}\n",
+        )
+
+        print(
+            "posterior mean total intrinsic flux within boundary =",
+            f"{self.posterior_mean_total_flux(self.pruned_fluxes).round().item()}\n",
+        )
+
+        print(
+            f"number of unique catalogs = {self.fluxes[0,0].sum(-1).unique(dim=0).shape[0]}"
         )
