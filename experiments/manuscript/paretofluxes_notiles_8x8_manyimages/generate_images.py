@@ -50,7 +50,7 @@ quantile01_flux = flux_scale * ((1 - 0.1) ** (-1 / flux_alpha))
 pad = np.sqrt(-2 * (psf_stdev**2) * np.log(flux_scale / quantile01_flux))
 
 prior = ParetoStarPrior(
-    max_objects=max_objects + 8,
+    max_objects=max_objects,
     image_height=image_dim,
     image_width=image_dim,
     flux_scale=flux_scale,
@@ -66,25 +66,34 @@ torch.manual_seed(1)
 
 num_images = 1000
 
-true_counts, true_locs, true_fluxes, images = imagemodel.generate(
-    Prior=prior, num_images=10 * num_images
+(
+    unpruned_counts,
+    unpruned_locs,
+    unpruned_fluxes,
+    pruned_counts,
+    pruned_locs,
+    pruned_fluxes,
+    images,
+) = imagemodel.generate(Prior=prior, num_images=10 * num_images)
+
+probs = 1 / pruned_counts.unique(return_counts=True)[1]
+index = torch.multinomial(
+    probs[pruned_counts], num_samples=num_images, replacement=False
 )
 
-index = true_counts <= max_objects
-true_counts = true_counts[index]
-true_locs = true_locs[index]
-true_fluxes = true_fluxes[index]
+pruned_counts = pruned_counts[index]
+pruned_locs = pruned_locs[index]
+pruned_fluxes = pruned_fluxes[index]
+unpruned_counts = unpruned_counts[index]
+unpruned_locs = unpruned_locs[index]
+unpruned_fluxes = unpruned_fluxes[index]
 images = images[index]
 
-probs = 1 / true_counts.unique(return_counts=True)[1]
-index = torch.multinomial(probs[true_counts], num_samples=num_images, replacement=False)
-true_counts = true_counts[index]
-true_locs = true_locs[index]
-true_fluxes = true_fluxes[index]
-images = images[index]
-
-torch.save(true_counts.cpu(), "data/true_counts.pt")
-torch.save(true_locs.cpu(), "data/true_locs.pt")
-torch.save(true_fluxes.cpu(), "data/true_fluxes.pt")
+torch.save(pruned_counts.cpu(), "data/pruned_counts.pt")
+torch.save(pruned_locs.cpu(), "data/pruned_locs.pt")
+torch.save(pruned_fluxes.cpu(), "data/pruned_fluxes.pt")
+torch.save(unpruned_counts.cpu(), "data/unpruned_counts.pt")
+torch.save(unpruned_locs.cpu(), "data/unpruned_locs.pt")
+torch.save(unpruned_fluxes.cpu(), "data/unpruned_fluxes.pt")
 torch.save(images.cpu(), "data/images.pt")
 ##############################################

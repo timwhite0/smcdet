@@ -66,20 +66,29 @@ torch.manual_seed(2)
 
 num_images = 100
 
-true_counts, true_locs, true_fluxes, images = imagemodel.generate(
-    Prior=prior, num_images=num_images
-)
+(
+    unpruned_counts,
+    unpruned_locs,
+    unpruned_fluxes,
+    pruned_counts,
+    pruned_locs,
+    pruned_fluxes,
+    images,
+) = imagemodel.generate(Prior=prior, num_images=num_images)
 
-# select one image each with count = 2, 4, 6, 8
+# select one image each with count (including padding) = 2, 4, 6, 8
 indexes = [
-    torch.arange(images.shape[0])[true_counts == 2][0].item(),
-    torch.arange(images.shape[0])[true_counts == 4][0].item(),
-    torch.arange(images.shape[0])[true_counts == 6][0].item(),
-    torch.arange(images.shape[0])[true_counts == 8][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 2][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 4][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 6][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 8][0].item(),
 ]
 
-torch.save(true_counts[indexes].cpu(), "data/true_counts.pt")
-torch.save(true_locs[indexes].cpu(), "data/true_locs.pt")
-torch.save(true_fluxes[indexes].cpu(), "data/true_fluxes.pt")
+torch.save(pruned_counts[indexes].cpu(), "data/pruned_counts.pt")
+torch.save(pruned_locs[indexes].cpu(), "data/pruned_locs.pt")
+torch.save(pruned_fluxes[indexes].cpu(), "data/pruned_fluxes.pt")
+torch.save(unpruned_counts[indexes].cpu(), "data/unpruned_counts.pt")
+torch.save(unpruned_locs[indexes].cpu(), "data/unpruned_locs.pt")
+torch.save(unpruned_fluxes[indexes].cpu(), "data/unpruned_fluxes.pt")
 torch.save(images[indexes].cpu(), "data/images.pt")
 ##############################################
