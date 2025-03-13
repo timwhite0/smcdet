@@ -40,36 +40,52 @@ class ImageModel(object):
 
     def generate(self, Prior, num_images=1):
         catalogs = Prior.sample(num_catalogs=num_images)
-        counts, locs, fluxes = catalogs
+        unpruned_counts, unpruned_locs, unpruned_fluxes = catalogs
 
-        images = self.sample(locs, fluxes)
+        images = self.sample(unpruned_locs, unpruned_fluxes)
 
         if Prior.pad > 0:
             in_bounds = torch.all(
                 torch.logical_and(
-                    locs > 0, locs < torch.tensor((self.image_height, self.image_width))
+                    unpruned_locs > 0,
+                    unpruned_locs < torch.tensor((self.image_height, self.image_width)),
                 ),
                 dim=-1,
             )
 
-            counts = in_bounds.sum(-1)
+            pruned_counts = in_bounds.sum(-1)
 
-            locs = in_bounds.unsqueeze(-1) * locs
-            locs_mask = (locs != 0).int()
-            locs_index = torch.sort(locs_mask, dim=3, descending=True)[1]
-            locs = torch.gather(locs, dim=3, index=locs_index)
+            pruned_locs = in_bounds.unsqueeze(-1) * unpruned_locs
+            pruned_locs_mask = (pruned_locs != 0).int()
+            pruned_locs_index = torch.sort(pruned_locs_mask, dim=3, descending=True)[1]
+            pruned_locs = torch.gather(pruned_locs, dim=3, index=pruned_locs_index)
 
-            fluxes = in_bounds * fluxes
-            fluxes_mask = (fluxes != 0).int()
-            fluxes_index = torch.sort(fluxes_mask, dim=3, descending=True)[1]
-            fluxes = torch.gather(fluxes, dim=3, index=fluxes_index)
+            pruned_fluxes = in_bounds * unpruned_fluxes
+            pruned_fluxes_mask = (pruned_fluxes != 0).int()
+            pruned_fluxes_index = torch.sort(
+                pruned_fluxes_mask, dim=3, descending=True
+            )[1]
+            pruned_fluxes = torch.gather(
+                pruned_fluxes, dim=3, index=pruned_fluxes_index
+            )
 
-        counts = counts.squeeze([0, 1])
-        locs = locs.squeeze([0, 1])
-        fluxes = fluxes.squeeze([0, 1])
+        unpruned_counts = unpruned_counts.squeeze([0, 1])
+        unpruned_locs = unpruned_locs.squeeze([0, 1])
+        unpruned_fluxes = unpruned_fluxes.squeeze([0, 1])
+        pruned_counts = pruned_counts.squeeze([0, 1])
+        pruned_locs = pruned_locs.squeeze([0, 1])
+        pruned_fluxes = pruned_fluxes.squeeze([0, 1])
         images = rearrange(images.squeeze([0, 1]), "dimH dimW n -> n dimH dimW")
 
-        return [counts, locs, fluxes, images]
+        return [
+            unpruned_counts,
+            unpruned_locs,
+            unpruned_fluxes,
+            pruned_counts,
+            pruned_locs,
+            pruned_fluxes,
+            images,
+        ]
 
     def loglikelihood(self, tiled_image, locs, fluxes):
         psf = self.psf(locs)
