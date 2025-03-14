@@ -28,9 +28,10 @@ torch.set_default_device(device)
 # LOAD IN IMAGES AND CATALOGS
 
 images = torch.load("data/images.pt").to(device)
-true_counts = torch.load("data/true_counts.pt").to(device)
-true_locs = torch.load("data/true_locs.pt").to(device)
-true_fluxes = torch.load("data/true_fluxes.pt").to(device)
+unpruned_counts = torch.load("data/unpruned_counts.pt").to(device)
+pruned_counts = torch.load("data/pruned_counts.pt").to(device)
+unpruned_fluxes = torch.load("data/unpruned_fluxes.pt").to(device)
+pruned_fluxes = torch.load("data/pruned_fluxes.pt").to(device)
 
 num_images = images.shape[0]
 image_height = images.shape[1]
@@ -71,16 +72,16 @@ imagemodel = ImageModel(
 
 mh = SingleComponentMH(
     num_iters=50,
-    locs_stdev=0.25,
-    fluxes_stdev=250,
+    locs_stdev=0.2,
+    fluxes_stdev=200,
     fluxes_min=prior.flux_scale,
     fluxes_max=1e6,
 )
 
 aggmh = SingleComponentMH(
     num_iters=50,
-    locs_stdev=0.1,
-    fluxes_stdev=100,
+    locs_stdev=0.2,
+    fluxes_stdev=200,
     fluxes_min=prior.flux_scale,
     fluxes_max=1e6,
 )
@@ -107,14 +108,23 @@ for b in range(num_batches):
     counts = torch.zeros([batch_size, num_catalogs])
     locs = torch.zeros([batch_size, num_catalogs, prior.max_objects, 2])
     fluxes = torch.zeros([batch_size, num_catalogs, prior.max_objects])
-    estimated_total_flux = torch.zeros([batch_size, num_catalogs])
+    posterior_predictive_total_flux = torch.zeros([batch_size, num_catalogs])
 
     for i in range(batch_size):
         image_index = b * batch_size + i
 
         print(f"image {image_index + 1} of {num_images}")
-        print(f"true count = {true_counts[image_index]}")
-        print(f"true total flux = {images[image_index].sum()}\n")
+        print(f"Number of stars including padding: {unpruned_counts[image_index]}")
+        print(f"Number of stars within image boundary: {pruned_counts[image_index]}")
+        print(
+            "Total intrinsic flux of all stars (including padding): ",
+            f"{unpruned_fluxes[image_index].sum(-1).round()}",
+        )
+        print(
+            "Total intrinsic flux of stars within image boundary: ",
+            f"{pruned_fluxes[image_index].sum(-1).round()}",
+        )
+        print(f"Total observed flux: {images[image_index].sum().round()}\n")
 
         sampler = SMCsampler(
             image=images[image_index],
@@ -156,7 +166,9 @@ for b in range(num_batches):
         index = agg.locs.shape[-2]
         locs[i, :, :index, :] = agg.locs.squeeze([0, 1])
         fluxes[i, :, :index] = agg.fluxes.squeeze([0, 1])
-        estimated_total_flux[i] = agg.estimated_total_flux
+        posterior_predictive_total_flux[i] = (
+            agg.posterior_predictive_total_observed_flux
+        )
 
         agg.summarize()
         print(f"\nruntime = {runtime[i]}\n\n\n")
@@ -166,7 +178,10 @@ for b in range(num_batches):
     torch.save(counts.cpu(), f"results/smc/counts_{b}.pt")
     torch.save(locs.cpu(), f"results/smc/locs_{b}.pt")
     torch.save(fluxes.cpu(), f"results/smc/fluxes_{b}.pt")
-    torch.save(estimated_total_flux.cpu(), f"results/smc/total_flux_{b}.pt")
+    torch.save(
+        posterior_predictive_total_flux.cpu(),
+        f"results/smc/posterior_predictive_total_flux_{b}.pt",
+    )
 
 print("Done!")
 ##############################################

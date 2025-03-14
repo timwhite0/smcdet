@@ -44,7 +44,7 @@ flux_alpha = (-np.log(1 - 0.99)) / (
     np.log(50 * np.sqrt(background) / psf_max) - np.log(flux_scale)
 )
 
-# choose padding s.t. 0.01-quantile-flux star at a distance of pad pixels outside
+# choose padding s.t. 0.1-quantile-flux star at a distance of pad pixels outside
 # the boundary contributes the same as a min-flux star at the boundary
 quantile01_flux = flux_scale * ((1 - 0.1) ** (-1 / flux_alpha))
 pad = np.sqrt(-2 * (psf_stdev**2) * np.log(flux_scale / quantile01_flux))
