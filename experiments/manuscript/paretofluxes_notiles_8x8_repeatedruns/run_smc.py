@@ -28,9 +28,10 @@ torch.set_default_device(device)
 # LOAD IN IMAGES AND CATALOGS
 
 images = torch.load("data/images.pt").to(device)
-true_counts = torch.load("data/true_counts.pt").to(device)
-true_locs = torch.load("data/true_locs.pt").to(device)
-true_fluxes = torch.load("data/true_fluxes.pt").to(device)
+unpruned_counts = torch.load("data/unpruned_counts.pt").to(device)
+pruned_counts = torch.load("data/pruned_counts.pt").to(device)
+unpruned_fluxes = torch.load("data/unpruned_fluxes.pt").to(device)
+pruned_fluxes = torch.load("data/pruned_fluxes.pt").to(device)
 
 num_images = images.shape[0]
 image_height = images.shape[1]
@@ -38,7 +39,7 @@ image_width = images.shape[2]
 ##############################################
 
 ##############################################
-# SPECIFY TILE-LEVEL IMAGE MODEL, PRIOR, AND MUTATION KERNEL
+# SPECIFY TILE-LEVEL IMAGE MODEL AND PRIOR
 
 tile_dim = 8
 
@@ -68,29 +69,15 @@ imagemodel = ImageModel(
     psf_stdev=psf_stdev,
     background=background,
 )
-
-mh = SingleComponentMH(
-    num_iters=50,
-    locs_stdev=0.25,
-    fluxes_stdev=250,
-    fluxes_min=prior.flux_scale,
-    fluxes_max=1e6,
-)
-
-aggmh = SingleComponentMH(
-    num_iters=50,
-    locs_stdev=0.1,
-    fluxes_stdev=100,
-    fluxes_min=prior.flux_scale,
-    fluxes_max=1e6,
-)
 ##############################################
 
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND NUMBER OF RUNS
 
-num_catalogs_per_count = [500, 2000, 5000]
+num_catalogs_per_count = [1000, 3000, 5000]
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
+
+num_mh_iters = [25, 50, 100]
 
 num_runs = 100
 ##############################################
@@ -102,87 +89,101 @@ torch.manual_seed(2)
 
 for i in range(num_images):
     print(f"image {i + 1} of {num_images}")
-    print(f"true count = {true_counts[i]}")
-    print(f"true total flux = {true_fluxes[i].sum()}\n")
+    print(f"Number of stars including padding: {unpruned_counts[i]}")
+    print(f"Number of stars within image boundary: {pruned_counts[i]}")
+    print(
+        "Total intrinsic flux of all stars (including padding): ",
+        f"{unpruned_fluxes[i].sum(-1).round()}",
+    )
+    print(
+        "Total intrinsic flux of stars within image boundary: ",
+        f"{pruned_fluxes[i].sum(-1).round()}",
+    )
+    print(f"Total observed flux: {images[i].sum().round()}\n")
 
     for c in range(len(num_catalogs_per_count)):
         num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count[c]
-        print(f"{num_catalogs_per_count[c]} catalogs per count\n")
 
-        runtime = torch.zeros([num_runs])
-        num_iters = torch.zeros([num_runs])
-        pruned_counts = torch.zeros([num_runs, num_catalogs])
-        log_normalizing_constants = torch.zeros([num_runs, prior.max_objects + 1])
-        estimated_total_flux = torch.zeros([num_runs, num_catalogs])
+        for m in range(len(num_mh_iters)):
+            print(f"{num_catalogs_per_count[c]} catalogs per count")
+            print(f"{num_mh_iters[m]} MH iterations\n")
 
-        for r in range(num_runs):
-            print(f"run {r + 1} of {num_runs}\n")
+            runtime = torch.zeros([num_runs])
+            num_iters = torch.zeros([num_runs])
+            log_normalizing_constants = torch.zeros([num_runs, prior.max_objects + 1])
+            total_intrinsic_flux = torch.zeros([num_runs, num_catalogs])
 
-            sampler = SMCsampler(
-                image=images[i],
-                tile_dim=tile_dim,
-                Prior=prior,
-                ImageModel=imagemodel,
-                MutationKernel=mh,
-                num_catalogs_per_count=num_catalogs_per_count[c],
-                ess_threshold_prop=0.5,
-                resample_method="multinomial",
-                max_smc_iters=100,
+            mh = SingleComponentMH(
+                num_iters=50,
+                locs_stdev=0.2,
+                fluxes_stdev=200,
+                fluxes_min=prior.flux_scale,
+                fluxes_max=1e6,
             )
 
-            start = time.perf_counter()
+            for r in range(num_runs):
+                print(f"run {r + 1} of {num_runs}\n")
 
-            sampler.run()
+                sampler = SMCsampler(
+                    image=images[i],
+                    tile_dim=tile_dim,
+                    Prior=prior,
+                    ImageModel=imagemodel,
+                    MutationKernel=mh,
+                    num_catalogs_per_count=num_catalogs_per_count[c],
+                    ess_threshold_prop=0.5,
+                    resample_method="multinomial",
+                    max_smc_iters=100,
+                )
 
-            agg = Aggregate(
-                sampler.Prior,
-                sampler.ImageModel,
-                aggmh,
-                sampler.tiled_image,
-                sampler.counts,
-                sampler.locs,
-                sampler.fluxes,
-                sampler.weights_intercount,
-                sampler.log_normalizing_constant,
-                ess_threshold_prop=0.5,
-                resample_method="multinomial",
+                start = time.perf_counter()
+
+                sampler.run()
+
+                agg = Aggregate(
+                    sampler.Prior,
+                    sampler.ImageModel,
+                    mh,
+                    sampler.tiled_image,
+                    sampler.counts,
+                    sampler.locs,
+                    sampler.fluxes,
+                    sampler.weights_intercount,
+                    sampler.log_normalizing_constant,
+                    ess_threshold_prop=0.5,
+                    resample_method="multinomial",
+                )
+
+                agg.run()
+
+                end = time.perf_counter()
+
+                runtime[r] = end - start
+                num_iters[r] = sampler.iter
+                log_normalizing_constants[r] = sampler.log_normalizing_constant.squeeze(
+                    [0, 1]
+                )
+                total_intrinsic_flux[r] = agg.fluxes.sum(-1).squeeze([0, 1])
+
+                agg.summarize()
+                print(f"\nruntime = {runtime[r]}\n\n\n")
+
+            torch.save(
+                runtime.cpu(),
+                f"results/smc/runtime_image{i+1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
             )
-
-            agg.run()
-
-            end = time.perf_counter()
-
-            runtime[r] = end - start
-            num_iters[r] = sampler.iter
-            pruned_counts[r] = agg.pruned_counts.squeeze([0, 1])
-            log_normalizing_constants[r] = sampler.log_normalizing_constant.squeeze(
-                [0, 1]
+            torch.save(
+                num_iters.cpu(),
+                f"results/smc/num_iters_image{i+1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
             )
-            estimated_total_flux[r] = agg.estimated_total_flux
-
-            agg.summarize()
-            print(f"\nruntime = {runtime[r]}\n\n\n")
-
-        torch.save(
-            runtime.cpu(),
-            f"results/smc/runtime_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
-        )
-        torch.save(
-            num_iters.cpu(),
-            f"results/smc/num_iters_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
-        )
-        torch.save(
-            pruned_counts.cpu(),
-            f"results/smc/pruned_counts_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
-        )
-        torch.save(
-            log_normalizing_constants.cpu(),
-            f"results/smc/log_norm_const_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
-        )
-        torch.save(
-            estimated_total_flux.cpu(),
-            f"results/smc/total_flux_image{i+1}_catalogs{num_catalogs_per_count[c]}.pt",
-        )
+            torch.save(
+                log_normalizing_constants.cpu(),
+                f"results/smc/log_norm_const_image{i+1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
+            )
+            torch.save(
+                total_intrinsic_flux.cpu(),
+                f"results/smc/total_intrinsic_flux_image{i+1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
+            )
 
 print("Done!")
 ##############################################

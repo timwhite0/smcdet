@@ -44,13 +44,13 @@ flux_alpha = (-np.log(1 - 0.99)) / (
     np.log(50 * np.sqrt(background) / psf_max) - np.log(flux_scale)
 )
 
-# choose padding s.t. 0.01-quantile-flux star at a distance of pad pixels outside
+# choose padding s.t. 0.1-quantile-flux star at a distance of pad pixels outside
 # the boundary contributes the same as a min-flux star at the boundary
 quantile01_flux = flux_scale * ((1 - 0.1) ** (-1 / flux_alpha))
 pad = np.sqrt(-2 * (psf_stdev**2) * np.log(flux_scale / quantile01_flux))
 
 prior = ParetoStarPrior(
-    max_objects=max_objects + 8,
+    max_objects=max_objects,
     image_height=image_dim,
     image_width=image_dim,
     flux_scale=flux_scale,
@@ -76,11 +76,9 @@ num_images = 100
     images,
 ) = imagemodel.generate(Prior=prior, num_images=num_images)
 
-# select one image each with count (including padding) = 2, 4, 6, 8
+# select one image each with count (including padding) = 4, 8
 indexes = [
-    torch.arange(images.shape[0])[unpruned_counts == 2][0].item(),
     torch.arange(images.shape[0])[unpruned_counts == 4][0].item(),
-    torch.arange(images.shape[0])[unpruned_counts == 6][0].item(),
     torch.arange(images.shape[0])[unpruned_counts == 8][0].item(),
 ]
 
