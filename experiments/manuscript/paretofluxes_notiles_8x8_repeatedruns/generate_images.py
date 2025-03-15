@@ -36,7 +36,7 @@ imagemodel = ImageModel(
 )
 
 # prior
-max_objects = 10
+max_objects = 8
 # make min flux an approximately 5sigma detection
 flux_scale = 5 * np.sqrt(background) / psf_max
 # choose alpha s.t. 0.99 quantile is an approximately 50sigma detection
@@ -76,10 +76,10 @@ num_images = 100
     images,
 ) = imagemodel.generate(Prior=prior, num_images=num_images)
 
-# select one image each with count (including padding) = 4, 8
+# select one image each with count (including padding) = 3, 6
 indexes = [
-    torch.arange(images.shape[0])[unpruned_counts == 4][0].item(),
-    torch.arange(images.shape[0])[unpruned_counts == 8][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 3][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 6][0].item(),
 ]
 
 torch.save(pruned_counts[indexes].cpu(), "data/pruned_counts.pt")
