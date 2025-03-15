@@ -36,7 +36,7 @@ imagemodel = ImageModel(
 )
 
 # prior
-max_objects = 10
+max_objects = 8
 # make min flux an approximately 5sigma detection
 flux_scale = 5 * np.sqrt(background) / psf_max
 # choose alpha s.t. 0.99 quantile is an approximately 50sigma detection
