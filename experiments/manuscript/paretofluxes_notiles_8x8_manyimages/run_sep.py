@@ -33,7 +33,9 @@ num_images = images.shape[0]
 image_height = images.shape[1]
 image_width = images.shape[2]
 background = 200
-padding = 0  # true padding is < 1, but padding needs to be an int here
+padding = (
+    0  # if > 0, image is reflectively padded to allow detections outside the boundary
+)
 padded_images = pad(images, (padding, padding, padding, padding), mode="reflect")
 max_detections = 50
 ##############################################
@@ -46,7 +48,7 @@ print("Starting grid search...\n")
 thresh = torch.linspace(start=20, end=65, steps=10)
 minarea = torch.linspace(start=1, end=3, steps=3)
 deblend_cont = torch.logspace(start=-5, end=-3, steps=3)
-clean_param = torch.logspace(start=0, end=2, steps=3)
+clean_param = torch.logspace(start=1, end=3, steps=3)
 
 pruned_count = torch.zeros(
     thresh.shape[0],
