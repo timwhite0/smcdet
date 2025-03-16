@@ -9,3 +9,4 @@ experiments/**/results/smc*/
 experiments/**/*.out
 debug.py
 **/tmp**
+experiments/**/results/figures/

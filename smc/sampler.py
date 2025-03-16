@@ -11,7 +11,7 @@ class SMCsampler(object):
         ImageModel,
         MutationKernel,
         num_catalogs_per_count,
-        ess_threshold,
+        ess_threshold_prop,
         resample_method,
         max_smc_iters,
         print_every=5,
@@ -59,8 +59,10 @@ class SMCsampler(object):
         ) * (self.fluxes != 0)
 
         # initialize temperature
-        self.temperature_prev = torch.zeros(1)
-        self.temperature = torch.zeros(1)
+        self.temperature_prev = torch.zeros(
+            self.num_tiles_per_side, self.num_tiles_per_side
+        )
+        self.temperature = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
 
         # cache loglikelihood for tempering step
         self.loglik = self.ImageModel.loglikelihood(
@@ -76,11 +78,20 @@ class SMCsampler(object):
             dim=2,
         ).softmax(3)
         self.weights_intercount = self.weights_log_unnorm.softmax(2)
-        # self.log_normalizing_constant = (self.weights_log_unnorm.exp().mean(2)).log()
+        self.log_normalizing_constant = (
+            torch.stack(
+                torch.split(
+                    self.weights_log_unnorm.exp(), self.num_catalogs_per_count, dim=-1
+                ),
+                dim=-1,
+            )
+            .mean(-2)
+            .log()
+        )
 
         # set ESS thresholds
         self.ess = 1 / (self.weights_intracount**2).sum(-1)
-        self.ess_threshold = ess_threshold
+        self.ess_threshold = ess_threshold_prop * num_catalogs_per_count
 
         self.has_run = False
 
@@ -88,7 +99,7 @@ class SMCsampler(object):
         logprior = self.Prior.log_prob(counts, locs, fluxes)
         loglik = self.ImageModel.loglikelihood(data, locs, fluxes)
 
-        return logprior + temperature * loglik
+        return logprior + temperature.unsqueeze(-1) * loglik
 
     def tempering_objective(self, loglikelihood, delta):
         log_numerator = 2 * ((delta * loglikelihood).logsumexp(0))
@@ -100,6 +111,7 @@ class SMCsampler(object):
         self.loglik = self.ImageModel.loglikelihood(
             self.tiled_image, self.locs, self.fluxes
         )
+        loglik = self.loglik.cpu()
 
         solutions = torch.zeros(
             self.num_tiles_per_side, self.num_tiles_per_side, self.num_counts
@@ -114,17 +126,21 @@ class SMCsampler(object):
 
                     def func(delta):
                         return self.tempering_objective(
-                            self.loglik[h, w, lower:upper], delta
+                            loglik[h, w, lower:upper], delta
                         )
 
-                    if func(1 - self.temperature.item()) < 0:
+                    if func(1 - self.temperature[h, w].item()) < 0:
                         solutions[h, w, c] = brentq(
-                            func, 0.0, 1 - self.temperature.item(), xtol=1e-6, rtol=1e-6
+                            func,
+                            0.0,
+                            1 - self.temperature[h, w].item(),
+                            xtol=1e-6,
+                            rtol=1e-6,
                         )
                     else:
-                        solutions[h, w, c] = 1 - self.temperature.item()
+                        solutions[h, w, c] = 1 - self.temperature[h, w].item()
 
-        delta = solutions.quantile(0.1, dim=-1).min()
+        delta = solutions.min(-1).values
 
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + delta
@@ -170,15 +186,6 @@ class SMCsampler(object):
             self.weights_intracount[:, :, count_num, :] = (
                 1 / self.num_catalogs_per_count
             )
-            tmp_weights_intercount = (
-                self.weights_intercount[:, :, lower:upper].sum(2)
-                / self.num_catalogs_per_count
-            )
-            self.weights_intercount[:, :, lower:upper] = (
-                tmp_weights_intercount.unsqueeze(2).repeat(
-                    1, 1, self.num_catalogs_per_count
-                )
-            )
 
     def mutate(self):
         self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
@@ -186,34 +193,51 @@ class SMCsampler(object):
             self.counts,
             self.locs,
             self.fluxes,
-            self.temperature_prev,
+            self.temperature,
             self.log_target,
         )
 
     def update_weights(self):
-        weights_log_incremental = (
-            self.temperature - self.temperature_prev
-        ) * self.loglik
-
-        self.weights_log_unnorm = (
-            self.weights_intercount.log() + weights_log_incremental
+        self.weights_log_unnorm = torch.nan_to_num(
+            (self.temperature - self.temperature_prev).unsqueeze(-1) * self.loglik,
+            -torch.inf,
         )
-        self.weights_log_unnorm = torch.nan_to_num(self.weights_log_unnorm, -torch.inf)
 
         self.weights_intracount = torch.stack(
             torch.split(self.weights_log_unnorm, self.num_catalogs_per_count, dim=2),
             dim=2,
         ).softmax(3)
-        self.weights_intercount = self.weights_log_unnorm.softmax(2)
 
-        # m = self.weights_log_unnorm.max(2).values
-        # w = (self.weights_log_unnorm - m.unsqueeze(2)).exp()
-        # s = w.sum(2)
-        # self.log_normalizing_constant = (
-        #   self.log_normalizing_constant + m + (s/self.num_catalogs).log()
-        # )
+        self.ess = 1 / (self.weights_intracount**2).sum(3)
 
-        self.ESS = 1 / (self.weights_intracount**2).sum(3)
+        m = (
+            torch.stack(
+                torch.split(
+                    self.weights_log_unnorm, self.num_catalogs_per_count, dim=-1
+                ),
+                dim=-1,
+            )
+            .max(-2)
+            .values
+        )
+        w = (
+            torch.stack(
+                torch.split(
+                    self.weights_log_unnorm, self.num_catalogs_per_count, dim=-1
+                ),
+                dim=-1,
+            )
+            - m.unsqueeze(-2)
+        ).exp()
+        s = w.sum(-2)
+        self.log_normalizing_constant = (
+            self.log_normalizing_constant + m + (s / self.num_catalogs_per_count).log()
+        )
+
+        self.weights_intercount = (
+            self.weights_intracount
+            * self.log_normalizing_constant.softmax(-1).unsqueeze(-1)
+        ).flatten(-2, -1)
 
     def run(self):
         self.iter = 0
@@ -223,15 +247,17 @@ class SMCsampler(object):
         self.temper()
         self.update_weights()
 
-        while self.temperature < 1 and self.iter <= self.max_smc_iters:
+        while torch.any(self.temperature < 1) and self.iter <= self.max_smc_iters:
             self.iter += 1
 
             if self.iter % self.print_every == 0:
                 print(
                     (
-                        f"iteration {self.iter}: temperature = {self.temperature.item()}, "
-                        f"mcmc acceptance rate in [{self.mutation_acc_rates.min()}, "
-                        f"{self.mutation_acc_rates.max()}]"
+                        f"iteration {self.iter}: "
+                        f"temperature in [{round(self.temperature.min().item(), 2)}, "
+                        f"{round(self.temperature.max().item(), 2)}], "
+                        f"acceptance rate in [{round(self.mutation_acc_rates.min().item(), 2)}, "
+                        f"{round(self.mutation_acc_rates.max().item(), 2)}]"
                     )
                 )
 

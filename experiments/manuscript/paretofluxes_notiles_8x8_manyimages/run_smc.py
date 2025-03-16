@@ -9,6 +9,7 @@ sys.path.append("/home/twhit/smc_object_detection/")
 
 import time
 
+import numpy as np
 import torch
 
 from smc.aggregate import Aggregate
@@ -27,9 +28,10 @@ torch.set_default_device(device)
 # LOAD IN IMAGES AND CATALOGS
 
 images = torch.load("data/images.pt").to(device)
-true_counts = torch.load("data/true_counts.pt").to(device)
-true_locs = torch.load("data/true_locs.pt").to(device)
-true_fluxes = torch.load("data/true_fluxes.pt").to(device)
+unpruned_counts = torch.load("data/unpruned_counts.pt").to(device)
+pruned_counts = torch.load("data/pruned_counts.pt").to(device)
+unpruned_fluxes = torch.load("data/unpruned_fluxes.pt").to(device)
+pruned_fluxes = torch.load("data/pruned_fluxes.pt").to(device)
 
 num_images = images.shape[0]
 image_height = images.shape[1]
@@ -41,32 +43,44 @@ image_width = images.shape[2]
 
 tile_dim = 8
 
+psf_stdev = 0.93
+psf_max = 1 / (2 * np.pi * (psf_stdev**2))
+background = 200
+max_objects = 10
+flux_scale = 5 * np.sqrt(background) / psf_max
+flux_alpha = (-np.log(1 - 0.99)) / (
+    np.log(50 * np.sqrt(background) / psf_max) - np.log(flux_scale)
+)
+quantile01_flux = flux_scale * ((1 - 0.1) ** (-1 / flux_alpha))
+pad = np.sqrt(-2 * (psf_stdev**2) * np.log(flux_scale / quantile01_flux))
+
 prior = ParetoStarPrior(
-    max_objects=5,
+    max_objects=max_objects,
     image_height=tile_dim,
     image_width=tile_dim,
-    flux_scale=600,
-    flux_alpha=1.25,
-    pad=2,
+    flux_scale=flux_scale,
+    flux_alpha=flux_alpha,
+    pad=pad,
 )
 
 imagemodel = ImageModel(
-    image_height=tile_dim, image_width=tile_dim, psf_stdev=1.0, background=300
+    image_height=tile_dim,
+    image_width=tile_dim,
+    psf_stdev=psf_stdev,
+    background=background,
 )
 
 mh = SingleComponentMH(
-    max_iters=200,
-    sqjumpdist_tol=1e-2,
-    locs_stdev=0.25,
-    fluxes_stdev=250,
+    num_iters=50,
+    locs_stdev=0.2,
+    fluxes_stdev=200,
     fluxes_min=prior.flux_scale,
     fluxes_max=1e6,
 )
 
 aggmh = SingleComponentMH(
-    max_iters=100,
-    sqjumpdist_tol=5e-2,
-    locs_stdev=0.1,
+    num_iters=50,
+    locs_stdev=0.2,
     fluxes_stdev=200,
     fluxes_min=prior.flux_scale,
     fluxes_max=1e6,
@@ -76,7 +90,7 @@ aggmh = SingleComponentMH(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 200
+num_catalogs_per_count = 5000
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 batch_size = 10
@@ -92,15 +106,25 @@ for b in range(num_batches):
     runtime = torch.zeros([batch_size])
     num_iters = torch.zeros([batch_size])
     counts = torch.zeros([batch_size, num_catalogs])
-    locs = torch.zeros([batch_size, num_catalogs, 10 * prior.max_objects, 2])
-    fluxes = torch.zeros([batch_size, num_catalogs, 10 * prior.max_objects])
+    locs = torch.zeros([batch_size, num_catalogs, prior.max_objects, 2])
+    fluxes = torch.zeros([batch_size, num_catalogs, prior.max_objects])
+    posterior_predictive_total_flux = torch.zeros([batch_size, num_catalogs])
 
     for i in range(batch_size):
         image_index = b * batch_size + i
 
         print(f"image {image_index + 1} of {num_images}")
-        print(f"true count = {true_counts[image_index]}")
-        print(f"true total flux = {true_fluxes[image_index].sum()}\n")
+        print(f"Number of stars including padding: {unpruned_counts[image_index]}")
+        print(f"Number of stars within image boundary: {pruned_counts[image_index]}")
+        print(
+            "Total intrinsic flux of all stars (including padding): ",
+            f"{unpruned_fluxes[image_index].sum(-1).round()}",
+        )
+        print(
+            "Total intrinsic flux of stars within image boundary: ",
+            f"{pruned_fluxes[image_index].sum(-1).round()}",
+        )
+        print(f"Total observed flux: {images[image_index].sum().round()}\n")
 
         sampler = SMCsampler(
             image=images[image_index],
@@ -109,7 +133,7 @@ for b in range(num_batches):
             ImageModel=imagemodel,
             MutationKernel=mh,
             num_catalogs_per_count=num_catalogs_per_count,
-            ess_threshold=0.75 * num_catalogs_per_count,
+            ess_threshold_prop=0.5,
             resample_method="multinomial",
             max_smc_iters=100,
         )
@@ -127,10 +151,9 @@ for b in range(num_batches):
             sampler.locs,
             sampler.fluxes,
             sampler.weights_intercount,
+            sampler.log_normalizing_constant,
+            ess_threshold_prop=0.5,
             resample_method="multinomial",
-            merge_method="naive",
-            merge_multiplier=1,
-            ess_threshold=(sampler.Prior.max_objects + 1) * sampler.ess_threshold,
         )
 
         agg.run()
@@ -143,15 +166,22 @@ for b in range(num_batches):
         index = agg.locs.shape[-2]
         locs[i, :, :index, :] = agg.locs.squeeze([0, 1])
         fluxes[i, :, :index] = agg.fluxes.squeeze([0, 1])
+        posterior_predictive_total_flux[i] = (
+            agg.posterior_predictive_total_observed_flux
+        )
 
         agg.summarize()
         print(f"\nruntime = {runtime[i]}\n\n\n")
 
-    torch.save(runtime.cpu(), f"results/smc_mh/runtime_{b}.pt")
-    torch.save(num_iters.cpu(), f"results/smc_mh/num_iters_{b}.pt")
-    torch.save(counts.cpu(), f"results/smc_mh/counts_{b}.pt")
-    torch.save(locs.cpu(), f"results/smc_mh/locs_{b}.pt")
-    torch.save(fluxes.cpu(), f"results/smc_mh/fluxes_{b}.pt")
+    torch.save(runtime.cpu(), f"results/smc/runtime_{b}.pt")
+    torch.save(num_iters.cpu(), f"results/smc/num_iters_{b}.pt")
+    torch.save(counts.cpu(), f"results/smc/counts_{b}.pt")
+    torch.save(locs.cpu(), f"results/smc/locs_{b}.pt")
+    torch.save(fluxes.cpu(), f"results/smc/fluxes_{b}.pt")
+    torch.save(
+        posterior_predictive_total_flux.cpu(),
+        f"results/smc/posterior_predictive_total_flux_{b}.pt",
+    )
 
 print("Done!")
 ##############################################

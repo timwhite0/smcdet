@@ -16,10 +16,9 @@ class Aggregate(object):
         locs,
         fluxes,
         weights,
+        log_normalizing_constant,
         resample_method,
-        merge_method,
-        merge_multiplier,
-        ess_threshold,
+        ess_threshold_prop,
         print_every=5,
     ):
         self.Prior = deepcopy(Prior)
@@ -29,18 +28,28 @@ class Aggregate(object):
         self.MutationKernel.locs_max = self.Prior.loc_prior.high
         self.mutation_acc_rates = None
 
-        self.temperature_prev = torch.zeros(1)
-        self.temperature = torch.zeros(1)
-
         self.data = data
         self.counts = counts
         self.locs = locs
         self.fluxes = fluxes
         self.weights = weights
-        self.num_catalogs = self.weights.shape[-1]
+        self.weights_intracount = None
 
         self.numH, self.numW, self.dimH, self.dimW = self.data.shape
         self.num_aggregation_levels = (2 * torch.tensor(self.numH).log2()).int().item()
+
+        self.log_normalizing_constant = [
+            [log_normalizing_constant[h, w].tolist() for w in range(self.numW)]
+            for h in range(self.numH)
+        ]
+
+        self.num_catalogs = self.weights.shape[-1]
+        self.num_catalogs_per_count = [
+            [None for _ in range(self.numW)] for _ in range(self.numH)
+        ]
+
+        self.temperature_prev = torch.zeros(self.numH, self.numW)
+        self.temperature = torch.zeros(self.numH, self.numW)
 
         if resample_method not in {"multinomial", "systematic"}:
             raise ValueError(
@@ -48,16 +57,7 @@ class Aggregate(object):
             )
         self.resample_method = resample_method
 
-        if merge_method not in {"naive", "lw_mixture"}:
-            raise ValueError("merge_method must be either naive or lw_mixture.")
-        self.merge_method = merge_method
-
-        if merge_method == "naive":
-            self.merge_multiplier = 1.0
-        elif merge_method == "lw_mixture":
-            self.merge_multiplier = float(merge_multiplier)
-
-        self.ess_threshold = ess_threshold
+        self.ess_threshold_prop = ess_threshold_prop
 
         self.print_every = print_every
 
@@ -99,48 +99,88 @@ class Aggregate(object):
 
         return cs, ls, fs, ws
 
-    def log_density(self, data, counts, locs, fluxes, temperature=1):
-        logprior = self.Prior.log_prob(counts, locs, fluxes)
-        loglik = self.ImageModel.loglikelihood(data, locs, fluxes)
-        return logprior + temperature * loglik
+    def log_target(
+        self,
+        axis,
+        ChildImageModel,
+        child_data,
+        child_locs,
+        child_fluxes,
+        parent_data,
+        parent_counts,
+        parent_locs,
+        parent_fluxes,
+        temperature,
+    ):
+        logprior = self.Prior.log_prob(parent_counts, parent_locs, parent_fluxes)
+        child_loglik = ChildImageModel.loglikelihood(
+            child_data, child_locs, child_fluxes
+        )
+        parent_loglik = self.ImageModel.loglikelihood(
+            parent_data, parent_locs, parent_fluxes
+        )
+
+        return (
+            logprior
+            + (1 - temperature).unsqueeze(-1) * child_loglik.unfold(axis, 2, 2).sum(-1)
+            + temperature.unsqueeze(-1) * parent_loglik
+        )
 
     def tempering_objective(self, loglikelihood, delta):
         log_numerator = 2 * ((delta * loglikelihood).logsumexp(0))
         log_denominator = (2 * delta * loglikelihood).logsumexp(0)
 
-        return (log_numerator - log_denominator).exp() - self.ess_threshold
+        return (
+            log_numerator - log_denominator
+        ).exp() - self.ess_threshold_prop * loglikelihood.shape[0]
 
     def temper(self):
-        self.loglik = self.ImageModel.loglikelihood(self.data, self.locs, self.fluxes)
+        loglik_diff = self.loglik_diff.cpu()
 
         solutions = torch.zeros(self.numH, self.numW)
 
         for h in range(self.numH):
             for w in range(self.numW):
+                loglik_diff_split = torch.split(
+                    loglik_diff[h, w], self.num_catalogs_per_count[h][w], dim=0
+                )
 
-                def func(delta):
-                    return self.tempering_objective(self.loglik[h, w], delta)
+                solutions_within_tile = torch.zeros(
+                    len(self.num_catalogs_per_count[h][w])
+                )
 
-                if func(1 - self.temperature.item()) < 0:
-                    solutions[h, w] = brentq(
-                        func, 0.0, 1 - self.temperature.item(), xtol=1e-6, rtol=1e-6
-                    )
-                else:
-                    solutions[h, w] = 1 - self.temperature.item()
+                for c in range(len(self.num_catalogs_per_count[h][w])):
 
-        delta = solutions.min()
+                    def func(delta):
+                        return self.tempering_objective(loglik_diff_split[c], delta)
+
+                    if func(1 - self.temperature[h, w].item()) < 0:
+                        solutions_within_tile[c] = brentq(
+                            func,
+                            0.0,
+                            1 - self.temperature[h, w].item(),
+                            xtol=1e-6,
+                            rtol=1e-6,
+                        )
+                    else:
+                        solutions_within_tile[c] = 1 - self.temperature[h, w].item()
+
+                solutions[h, w] = solutions_within_tile.min()
 
         self.temperature_prev = self.temperature
-        self.temperature = self.temperature + delta
+        self.temperature = self.temperature + solutions
 
-    def mutate(self):
+    def mutate(self, axis, ChildImageModel):
         self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
             self.data,
             self.counts,
             self.locs,
             self.fluxes,
-            self.temperature_prev,
-            self.log_density,
+            self.temperature,
+            self.log_target,
+            self.unjoin,
+            axis,
+            ChildImageModel,
         )
 
     def drop_sources_from_overlap(self, axis, counts, locs, fluxes):
@@ -219,62 +259,262 @@ class Aggregate(object):
 
         return dat, cs, ls, fs
 
-    def prune(self):
+    def unjoin(self, axis, data, locs, fluxes):
+        if axis == 0:
+            dat = rearrange(
+                data, "numH numW (t dimH) dimW -> (t numH) numW dimH dimW", t=2
+            )
+        elif axis == 1:
+            dat = rearrange(
+                data, "numH numW dimH (t dimW) -> numH (t numW) dimH dimW", t=2
+            )
+
+        mask = (
+            locs.select(-1, axis) <= (self.dimH * (1 - axis) + self.dimW * axis) / 2
+        ).int()
+
+        # split up locs
+        region1_locs = mask.unsqueeze(-1) * locs
+        region1_locs_mask = (region1_locs != 0).int()
+        region1_locs_index = torch.sort(region1_locs_mask, dim=-2, descending=True)[1]
+        region1_locs = torch.gather(region1_locs, dim=-2, index=region1_locs_index)
+
+        region2_locs = (1 - mask).unsqueeze(-1) * locs
+        region2_locs_mask = (region2_locs != 0).int()
+        region2_locs_index = torch.sort(region2_locs_mask, dim=-2, descending=True)[1]
+        region2_locs = torch.gather(region2_locs, dim=-2, index=region2_locs_index)
+
+        region2_locs_sorted_mask = (region2_locs != 0).int()
+        region2_locs.select(-1, axis)[...] -= (self.dimH / 2) * (1 - axis) + (
+            self.dimW / 2
+        ) * axis
+        region2_locs *= region2_locs_sorted_mask
+
+        new_locs = torch.cat((region1_locs, region2_locs), dim=axis)
+
+        # split up fluxes
+        region1_fluxes = mask * fluxes
+        region1_fluxes_mask = (region1_fluxes != 0).int()
+        region1_fluxes_index = torch.sort(region1_fluxes_mask, dim=-1, descending=True)[
+            1
+        ]
+        region1_fluxes = torch.gather(
+            region1_fluxes, dim=-1, index=region1_fluxes_index
+        )
+
+        region2_fluxes = (1 - mask) * fluxes
+        region2_fluxes_mask = (region2_fluxes != 0).int()
+        region2_fluxes_index = torch.sort(region2_fluxes_mask, dim=-1, descending=True)[
+            1
+        ]
+        region2_fluxes = torch.gather(
+            region2_fluxes, dim=-1, index=region2_fluxes_index
+        )
+
+        new_fluxes = torch.cat((region1_fluxes, region2_fluxes), dim=axis)
+
+        # split up counts
+        tile1_counts = (mask * (locs != 0).all(-1)).sum(-1)
+        tile2_counts = ((1 - mask) * (locs != 0).all(-1)).sum(-1)
+        new_counts = torch.cat((tile1_counts, tile2_counts), dim=axis)
+
+        return dat, new_counts, new_locs, new_fluxes
+
+    def prune(self, locs, fluxes):
         in_bounds = torch.all(
-            torch.logical_and(
-                self.locs > 0, self.locs < torch.tensor((self.dimH, self.dimW))
-            ),
+            torch.logical_and(locs > 0, locs < torch.tensor((self.dimH, self.dimW))),
             dim=-1,
         )
 
-        self.counts = in_bounds.sum(-1)
+        counts = in_bounds.sum(-1)
 
-        self.locs = in_bounds.unsqueeze(-1) * self.locs
-        locs_mask = (self.locs != 0).int()
+        locs = in_bounds.unsqueeze(-1) * locs
+        locs_mask = (locs != 0).int()
         locs_index = torch.sort(locs_mask, dim=3, descending=True)[1]
-        self.locs = torch.gather(self.locs, dim=3, index=locs_index)
+        locs = torch.gather(locs, dim=3, index=locs_index)
 
-        self.fluxes = in_bounds * self.fluxes
-        fluxes_mask = (self.fluxes != 0).int()
+        fluxes = in_bounds * fluxes
+        fluxes_mask = (fluxes != 0).int()
         fluxes_index = torch.sort(fluxes_mask, dim=3, descending=True)[1]
-        self.fluxes = torch.gather(self.fluxes, dim=3, index=fluxes_index)
+        fluxes = torch.gather(fluxes, dim=3, index=fluxes_index)
+
+        return counts, locs, fluxes
 
     def merge(self, level):
-        if self.merge_method == "naive":
-            index = self.get_resampled_index(self.weights, 1)
-            cs, ls, fs, ws = self.apply_resampled_index(
-                index, self.counts, self.locs, self.fluxes
-            )
+        marginal_counts = self.counts
 
-            if level % 2 == 0:
-                cs, ls, fs = self.drop_sources_from_overlap(0, cs, ls, fs)
-                self.data, self.counts, self.locs, self.fluxes = self.join(
-                    0, self.data, cs, ls, fs
+        index = self.get_resampled_index(self.weights, 1)
+        cs_resampled, ls_resampled, fs_resampled, ws_resampled = (
+            self.apply_resampled_index(index, self.counts, self.locs, self.fluxes)
+        )
+
+        cs_pruned, ls_pruned, fs_pruned = self.drop_sources_from_overlap(
+            level % 2, cs_resampled, ls_resampled, fs_resampled
+        )
+        self.data, self.counts, self.locs, self.fluxes = self.join(
+            level % 2, self.data, cs_pruned, ls_pruned, fs_pruned
+        )
+
+        # compute initial log normalizing constant
+        marginal_numH = self.numH * (1 + (1 - level % 2))
+        marginal_numW = self.numW * (1 + (level % 2))
+
+        marginal_log_normalizing_constant = [
+            [None for _ in range(marginal_numW)] for _ in range(marginal_numH)
+        ]
+
+        for marginal_h in range(marginal_numH):
+            for marginal_w in range(marginal_numW):
+                joint_h = marginal_h // (1 + (1 - level % 2))
+                joint_w = marginal_w // (1 + (level % 2))
+
+                unique_joint_counts = self.counts[joint_h, joint_w].unique()
+                unique_marginal_counts = marginal_counts[
+                    marginal_h, marginal_w
+                ].unique()
+
+                marginal_log_normalizing_constant[marginal_h][marginal_w] = torch.zeros(
+                    len(unique_joint_counts)
                 )
-            elif level % 2 != 0:
-                cs, ls, fs = self.drop_sources_from_overlap(1, cs, ls, fs)
-                self.data, self.counts, self.locs, self.fluxes = self.join(
-                    1, self.data, cs, ls, fs
+
+                for j in range(len(unique_joint_counts)):
+                    merge_pmf = torch.zeros(len(unique_marginal_counts))
+
+                    for k in range(len(unique_marginal_counts)):
+                        merge_pmf[k] = (
+                            (
+                                cs_resampled[marginal_h, marginal_w][
+                                    self.counts[joint_h, joint_w]
+                                    == unique_joint_counts[j]
+                                ]
+                                == unique_marginal_counts[k]
+                            )
+                            .float()
+                            .mean()
+                        )
+
+                    marginal_log_normalizing_constant[marginal_h][marginal_w][j] = (
+                        (
+                            torch.tensor(
+                                self.log_normalizing_constant[marginal_h][marginal_w]
+                            )
+                            + merge_pmf.log().nan_to_num()
+                        ).logsumexp(-1)
+                    ).tolist()
+
+        self.log_normalizing_constant = [
+            [None for _ in range(self.numW)] for _ in range(self.numH)
+        ]
+
+        for joint_h in range(self.numH):
+            for joint_w in range(self.numW):
+                self.log_normalizing_constant[joint_h][joint_w] = (
+                    marginal_log_normalizing_constant[joint_h * (1 + (1 - level % 2))][
+                        joint_w * (1 + level % 2)
+                    ]
+                    + marginal_log_normalizing_constant[
+                        joint_h * (1 + (1 - level % 2)) + (1 - level % 2)
+                    ][joint_w * (1 + level % 2) + (level % 2)]
                 )
-        elif self.merge_method == "lw_mixture":
-            index = self.get_resampled_index(self.weights, self.merge_multiplier)
-            cs, ls, fs, ws = self.apply_resampled_index(
-                index, self.counts, self.locs, self.fluxes
-            )
 
-            if level % 2 == 0:
-                cs, ls, fs = self.drop_sources_from_overlap(0, cs, ls, fs)
-                self.data, cs, ls, fs = self.join(0, self.data, cs, ls, fs)
-            elif level % 2 != 0:
-                cs, ls, fs = self.drop_sources_from_overlap(1, cs, ls, fs)
-                self.data, cs, ls, fs = self.join(1, self.data, cs, ls, fs)
+    def sort_by_count(self):
+        self.counts, indices = self.counts.sort()
 
-            ld = self.log_density(self.data, cs, ls, fs)
-            ws = ld.softmax(-1)
+        self.num_catalogs_per_count = [
+            [None for _ in range(self.numW)] for _ in range(self.numH)
+        ]
 
-            index = self.get_resampled_index(ws, 1 / self.merge_multiplier)
-            res = self.apply_resampled_index(index, cs, ls, fs)
-            self.counts, self.locs, self.fluxes, self.weights = res
+        for h in range(self.numH):
+            for w in range(self.numW):
+                self.num_catalogs_per_count[h][w] = (
+                    self.counts[h, w].unique(return_counts=True)[-1].tolist()
+                )
+                self.fluxes[h, w] = self.fluxes[h, w].index_select(0, indices[h, w])
+                self.locs[h, w] = self.locs[h, w].index_select(0, indices[h, w])
+
+    def update_weights(self):
+        weights_log_unnorm = (self.temperature - self.temperature_prev).unsqueeze(
+            -1
+        ) * self.loglik_diff
+
+        self.weights_intracount = torch.zeros_like(weights_log_unnorm)
+        self.weights = torch.zeros_like(weights_log_unnorm)
+
+        for h in range(self.numH):
+            for w in range(self.numW):
+                weights_log_unnorm_split = torch.split(
+                    weights_log_unnorm[h, w], self.num_catalogs_per_count[h][w], dim=0
+                )
+                self.weights_intracount[h, w] = torch.cat(
+                    [wt.softmax(-1) for wt in weights_log_unnorm_split], dim=0
+                )
+
+                lnc_update = [
+                    (wt - wt.max()).exp().mean().log() + wt.max()
+                    for wt in weights_log_unnorm_split
+                ]
+                self.log_normalizing_constant[h][w] = [
+                    prev + new
+                    for prev, new in zip(
+                        self.log_normalizing_constant[h][w], lnc_update
+                    )
+                ]
+
+                weights_intracount_split = torch.split(
+                    self.weights_intracount[h, w],
+                    self.num_catalogs_per_count[h][w],
+                    dim=0,
+                )
+                lnc_softmax = (
+                    torch.tensor(self.log_normalizing_constant[h][w])
+                    .softmax(0)
+                    .tolist()
+                )
+                self.weights[h, w] = torch.cat(
+                    [
+                        wt * lnc
+                        for wt, lnc in zip(weights_intracount_split, lnc_softmax)
+                    ],
+                    dim=0,
+                )
+
+    def resample_intracount(self):
+        for h in range(self.numH):
+            for w in range(self.numW):
+                weights_intracount_split = list(
+                    torch.split(
+                        self.weights_intracount[h, w],
+                        self.num_catalogs_per_count[h][w],
+                        dim=0,
+                    )
+                )
+                locs = list(
+                    torch.split(
+                        self.locs[h, w], self.num_catalogs_per_count[h][w], dim=0
+                    )
+                )
+                fluxes = list(
+                    torch.split(
+                        self.fluxes[h, w], self.num_catalogs_per_count[h][w], dim=0
+                    )
+                )
+
+                for c in range(len(self.num_catalogs_per_count[h][w])):
+                    idx = weights_intracount_split[c].multinomial(
+                        weights_intracount_split[c].shape[0], replacement=True
+                    )
+                    locs[c] = locs[c][idx]
+                    fluxes[c] = fluxes[c][idx]
+                    weights_intracount_split[c] = (
+                        torch.ones(self.num_catalogs_per_count[h][w][c])
+                        / self.num_catalogs_per_count[h][w][c]
+                    )
+
+                self.locs[h, w] = torch.cat(locs, dim=0)
+                self.fluxes[h, w] = torch.cat(fluxes, dim=0)
+                self.weights_intracount[h, w] = torch.cat(
+                    tuple(weights_intracount_split), dim=0
+                )
 
     def run(self):
         print("aggregating tile catalogs...")
@@ -282,82 +522,123 @@ class Aggregate(object):
         for level in range(self.num_aggregation_levels):
             print(f"level {level}")
 
-            self.iter = 0
-
+            ChildImageModel = deepcopy(self.ImageModel)
             self.merge(level)
+            self.sort_by_count()
 
+            child_data, child_counts, child_locs, child_fluxes = self.unjoin(
+                level % 2, self.data, self.locs, self.fluxes
+            )
+            child_loglik = ChildImageModel.loglikelihood(
+                child_data, child_locs, child_fluxes
+            )
+            self.loglik_diff = self.ImageModel.loglikelihood(
+                self.data, self.locs, self.fluxes
+            ) - child_loglik.unfold(level % 2, 2, 2).sum(-1)
+
+            self.temperature_prev = torch.zeros(self.numH, self.numW)
+            self.temperature = torch.zeros(self.numH, self.numW)
             self.temper()
 
-            self.weights = (
-                (self.temperature - self.temperature_prev)
-                * self.ImageModel.loglikelihood(self.data, self.locs, self.fluxes)
-            ).softmax(-1)
+            self.update_weights()
 
-            while self.temperature < 1:
+            self.iter = 0
+
+            while torch.any(self.temperature < 1):
                 self.iter += 1
 
                 if self.iter % self.print_every == 0:
                     print(
                         (
-                            f"iteration {self.iter}: temperature = {self.temperature.item()}, "
-                            f"mcmc acceptance rate in [{self.mutation_acc_rates.min()}, "
-                            f"{self.mutation_acc_rates.max()}]"
+                            f"iteration {self.iter}: "
+                            f"temperature in [{round(self.temperature.min().item(),2)}, "
+                            f"{round(self.temperature.max().item(),2)}], "
+                            f"acceptance rate in [{round(self.mutation_acc_rates.min().item(),2)}, "
+                            f"{round(self.mutation_acc_rates.max().item(),2)}]"
                         )
                     )
 
-                index = self.get_resampled_index(self.weights, 1)
-                res = self.apply_resampled_index(
-                    index, self.counts, self.locs, self.fluxes
-                )
-                self.counts, self.locs, self.fluxes, self.weights = res
+                self.resample_intracount()
 
-                self.mutate()
+                self.mutate(axis=level % 2, ChildImageModel=ChildImageModel)
+
+                child_data, child_counts, child_locs, child_fluxes = self.unjoin(
+                    level % 2, self.data, self.locs, self.fluxes
+                )
+                child_loglik = ChildImageModel.loglikelihood(
+                    child_data, child_locs, child_fluxes
+                )
+                self.loglik_diff = self.ImageModel.loglikelihood(
+                    self.data, self.locs, self.fluxes
+                ) - child_loglik.unfold(level % 2, 2, 2).sum(-1)
 
                 self.temper()
 
-                self.weights = (
-                    (self.temperature - self.temperature_prev)
-                    * self.ImageModel.loglikelihood(self.data, self.locs, self.fluxes)
-                ).softmax(-1)
-
-            # reset for next merge
-            self.temperature_prev = torch.zeros(1)
-            self.temperature = torch.zeros(1)
+                self.update_weights()
 
         index = self.get_resampled_index(self.weights, 1)
         res = self.apply_resampled_index(index, self.counts, self.locs, self.fluxes)
         self.counts, self.locs, self.fluxes, self.weights = res
 
-        self.prune()
+        self.pruned_counts, self.pruned_locs, self.pruned_fluxes = self.prune(
+            self.locs, self.fluxes
+        )
 
         self.has_run = True
 
         print("done!\n")
 
     @property
-    def ESS(self):
+    def ess(self):
         return 1 / (self.weights**2).sum(-1)
 
-    @property
-    def posterior_mean_counts(self):
-        return (self.weights * self.counts).sum(-1)
+    def posterior_mean_count(self, counts):
+        return (self.weights * counts).sum(-1)
+
+    def posterior_mean_total_flux(self, fluxes):
+        return (self.weights * fluxes.sum(-1)).sum(-1)
 
     @property
-    def posterior_mean_total_flux(self):
-        return (self.weights * self.fluxes.sum(-1)).sum(-1)
+    def posterior_predictive_total_observed_flux(self):
+        return self.ImageModel.sample(self.locs, self.fluxes).sum([-2, -3]).squeeze()
 
     def summarize(self):
         if self.has_run is False:
             raise ValueError("aggregation procedure hasn't been run yet.")
 
-        print("summary:\nposterior distribution of number of stars:")
+        print(
+            "summary:\n\nposterior distribution of number of stars including padding:"
+        )
         print(self.counts.unique(return_counts=True)[0].cpu())
         print(
             (self.counts.unique(return_counts=True)[1] / self.counts.shape[-1])
             .round(decimals=3)
-            .cpu()
+            .cpu(),
+            "\n",
         )
-        print(f"\nposterior mean total flux = {self.posterior_mean_total_flux.item()}")
+
+        print("posterior distribution of number of stars within image boundary:")
+        print(self.pruned_counts.unique(return_counts=True)[0].cpu())
         print(
-            f"\nnumber of unique catalogs = {self.fluxes[0,0].sum(-1).unique(dim=0).shape[0]}"
+            (
+                self.pruned_counts.unique(return_counts=True)[1]
+                / self.pruned_counts.shape[-1]
+            )
+            .round(decimals=3)
+            .cpu(),
+            "\n",
+        )
+
+        print(
+            "posterior mean total intrinsic flux including padding =",
+            f"{self.posterior_mean_total_flux(self.fluxes).round().item()}\n",
+        )
+
+        print(
+            "posterior mean total intrinsic flux within boundary =",
+            f"{self.posterior_mean_total_flux(self.pruned_fluxes).round().item()}\n",
+        )
+
+        print(
+            f"number of unique catalogs = {self.fluxes[0,0].sum(-1).unique(dim=0).shape[0]}"
         )
