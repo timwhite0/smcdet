@@ -62,7 +62,7 @@ prior = ParetoStarPrior(
 ##############################################
 # GENERATE IMAGES
 
-torch.manual_seed(2)
+torch.manual_seed(0)
 
 num_images = 100
 
@@ -76,10 +76,10 @@ num_images = 100
     images,
 ) = imagemodel.generate(Prior=prior, num_images=num_images)
 
-# select one image each with count (including padding) = 3, 6
+# select one image each with count (including padding) = 3, 5
 indexes = [
     torch.arange(images.shape[0])[unpruned_counts == 3][0].item(),
-    torch.arange(images.shape[0])[unpruned_counts == 6][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 5][0].item(),
 ]
 
 torch.save(pruned_counts[indexes].cpu(), "data/pruned_counts.pt")

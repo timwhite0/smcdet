@@ -46,7 +46,7 @@ tile_dim = 8
 psf_stdev = 0.93
 psf_max = 1 / (2 * np.pi * (psf_stdev**2))
 background = 200
-max_objects = 10
+max_objects = 6
 flux_scale = 5 * np.sqrt(background) / psf_max
 flux_alpha = (-np.log(1 - 0.99)) / (
     np.log(50 * np.sqrt(background) / psf_max) - np.log(flux_scale)
