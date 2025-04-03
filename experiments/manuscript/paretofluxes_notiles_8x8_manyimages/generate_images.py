@@ -36,7 +36,7 @@ imagemodel = ImageModel(
 )
 
 # prior
-max_objects = 8
+max_objects = 6
 # make min flux an approximately 5sigma detection
 flux_scale = 5 * np.sqrt(background) / psf_max
 # choose alpha s.t. 0.99 quantile is an approximately 50sigma detection
@@ -64,7 +64,7 @@ prior = ParetoStarPrior(
 
 torch.manual_seed(1)
 
-num_images = 1000
+num_images = 2000
 
 (
     unpruned_counts,
@@ -74,20 +74,7 @@ num_images = 1000
     pruned_locs,
     pruned_fluxes,
     images,
-) = imagemodel.generate(Prior=prior, num_images=10 * num_images)
-
-probs = 1 / pruned_counts.unique(return_counts=True)[1]
-index = torch.multinomial(
-    probs[pruned_counts], num_samples=num_images, replacement=False
-)
-
-pruned_counts = pruned_counts[index]
-pruned_locs = pruned_locs[index]
-pruned_fluxes = pruned_fluxes[index]
-unpruned_counts = unpruned_counts[index]
-unpruned_locs = unpruned_locs[index]
-unpruned_fluxes = unpruned_fluxes[index]
-images = images[index]
+) = imagemodel.generate(Prior=prior, num_images=num_images)
 
 torch.save(pruned_counts.cpu(), "data/pruned_counts.pt")
 torch.save(pruned_locs.cpu(), "data/pruned_locs.pt")
