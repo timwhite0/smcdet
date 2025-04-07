@@ -36,7 +36,7 @@ imagemodel = ImageModel(
 )
 
 # prior
-max_objects = 8
+max_objects = 6
 # make min flux an approximately 5sigma detection
 flux_scale = 5 * np.sqrt(background) / psf_max
 # choose alpha s.t. 0.99 quantile is an approximately 50sigma detection
@@ -62,9 +62,9 @@ prior = ParetoStarPrior(
 ##############################################
 # GENERATE IMAGES
 
-torch.manual_seed(2)
+torch.manual_seed(1)
 
-num_images = 100
+num_images = 2000
 
 (
     unpruned_counts,
@@ -76,17 +76,11 @@ num_images = 100
     images,
 ) = imagemodel.generate(Prior=prior, num_images=num_images)
 
-# select one image each with count (including padding) = 3, 6
-indexes = [
-    torch.arange(images.shape[0])[unpruned_counts == 3][0].item(),
-    torch.arange(images.shape[0])[unpruned_counts == 6][0].item(),
-]
-
-torch.save(pruned_counts[indexes].cpu(), "data/pruned_counts.pt")
-torch.save(pruned_locs[indexes].cpu(), "data/pruned_locs.pt")
-torch.save(pruned_fluxes[indexes].cpu(), "data/pruned_fluxes.pt")
-torch.save(unpruned_counts[indexes].cpu(), "data/unpruned_counts.pt")
-torch.save(unpruned_locs[indexes].cpu(), "data/unpruned_locs.pt")
-torch.save(unpruned_fluxes[indexes].cpu(), "data/unpruned_fluxes.pt")
-torch.save(images[indexes].cpu(), "data/images.pt")
+torch.save(pruned_counts.cpu(), "data/pruned_counts.pt")
+torch.save(pruned_locs.cpu(), "data/pruned_locs.pt")
+torch.save(pruned_fluxes.cpu(), "data/pruned_fluxes.pt")
+torch.save(unpruned_counts.cpu(), "data/unpruned_counts.pt")
+torch.save(unpruned_locs.cpu(), "data/unpruned_locs.pt")
+torch.save(unpruned_fluxes.cpu(), "data/unpruned_fluxes.pt")
+torch.save(images.cpu(), "data/images.pt")
 ##############################################

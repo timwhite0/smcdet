@@ -62,9 +62,9 @@ prior = ParetoStarPrior(
 ##############################################
 # GENERATE IMAGES
 
-torch.manual_seed(1)
+torch.manual_seed(0)
 
-num_images = 1000
+num_images = 100
 
 (
     unpruned_counts,
@@ -74,26 +74,19 @@ num_images = 1000
     pruned_locs,
     pruned_fluxes,
     images,
-) = imagemodel.generate(Prior=prior, num_images=10 * num_images)
+) = imagemodel.generate(Prior=prior, num_images=num_images)
 
-probs = 1 / pruned_counts.unique(return_counts=True)[1]
-index = torch.multinomial(
-    probs[pruned_counts], num_samples=num_images, replacement=False
-)
+# select one image each with count (including padding) = 3, 5
+indexes = [
+    torch.arange(images.shape[0])[unpruned_counts == 3][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 5][0].item(),
+]
 
-pruned_counts = pruned_counts[index]
-pruned_locs = pruned_locs[index]
-pruned_fluxes = pruned_fluxes[index]
-unpruned_counts = unpruned_counts[index]
-unpruned_locs = unpruned_locs[index]
-unpruned_fluxes = unpruned_fluxes[index]
-images = images[index]
-
-torch.save(pruned_counts.cpu(), "data/pruned_counts.pt")
-torch.save(pruned_locs.cpu(), "data/pruned_locs.pt")
-torch.save(pruned_fluxes.cpu(), "data/pruned_fluxes.pt")
-torch.save(unpruned_counts.cpu(), "data/unpruned_counts.pt")
-torch.save(unpruned_locs.cpu(), "data/unpruned_locs.pt")
-torch.save(unpruned_fluxes.cpu(), "data/unpruned_fluxes.pt")
-torch.save(images.cpu(), "data/images.pt")
+torch.save(pruned_counts[indexes].cpu(), "data/pruned_counts.pt")
+torch.save(pruned_locs[indexes].cpu(), "data/pruned_locs.pt")
+torch.save(pruned_fluxes[indexes].cpu(), "data/pruned_fluxes.pt")
+torch.save(unpruned_counts[indexes].cpu(), "data/unpruned_counts.pt")
+torch.save(unpruned_locs[indexes].cpu(), "data/unpruned_locs.pt")
+torch.save(unpruned_fluxes[indexes].cpu(), "data/unpruned_fluxes.pt")
+torch.save(images[indexes].cpu(), "data/images.pt")
 ##############################################
