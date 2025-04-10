@@ -12,7 +12,7 @@ surveys:
       fields:
           - run: 6895
             camcol: 3
-            fields: [52]
+            fields: [52,53]
       psf_config:
         pixel_scale: 0.396
         psf_slen: 25
