@@ -131,4 +131,6 @@ class M71ImageModel(ImageModel):
             )
         ).sum(-1) + self.background
 
-        return Normal(rate, rate.sqrt()).log_prob(tiled_image.unsqueeze(-1))
+        return (
+            Normal(rate, rate.sqrt()).log_prob(tiled_image.unsqueeze(-1)).sum([-2, -3])
+        )
