@@ -194,7 +194,7 @@ class M71Prior(PoissonProcessPrior):
         return log_prior + (
             torch.tensor(
                 self.flux_prior.logpdf(
-                    (fluxes + (self.flux_min) * (fluxes == 0)).numpy()
+                    (fluxes + (self.flux_min) * (fluxes == 0)).cpu().numpy()
                 )
             )
             * self.counts_mask
