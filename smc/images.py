@@ -108,19 +108,27 @@ class ImageModel(object):
 
 
 class M71ImageModel(ImageModel):
-    # Override
+    def __init__(self, *args, flux_calibration, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.flux_calibration = flux_calibration
+
     def sample(self, locs, fluxes):
         psf = self.psf(locs)
-        rate = (psf * rearrange(fluxes, "numH numW n d -> numH numW 1 1 n d")).sum(
-            -1
-        ) + self.background
+        rate = (
+            psf
+            * rearrange(
+                self.flux_calibration * fluxes, "numH numW n d -> numH numW 1 1 n d"
+            )
+        ).sum(-1) + self.background
         return Normal(rate, rate.sqrt()).sample()
 
-    # Override
     def loglikelihood(self, tiled_image, locs, fluxes):
         psf = self.psf(locs)
-        rate = (psf * rearrange(fluxes, "numH numW n d -> numH numW 1 1 n d")).sum(
-            -1
-        ) + self.background
+        rate = (
+            psf
+            * rearrange(
+                self.flux_calibration * fluxes, "numH numW n d -> numH numW 1 1 n d"
+            )
+        ).sum(-1) + self.background
 
         return Normal(rate, rate.sqrt()).log_prob(tiled_image.unsqueeze(-1))
