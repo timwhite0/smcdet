@@ -56,7 +56,7 @@ imagemodel = M71ImageModel(
     image_height=tile_dim,
     image_width=tile_dim,
     background=491.5867919921875,
-    flux_calibration=965.4718627929688,
+    flux_calibration=966.0794677734375,
     psf_params=torch.tensor([1.36, 4.8475, 8.3333, 3.0000, 0.144, 0.0068779]),
 )
 
@@ -65,7 +65,7 @@ mh = SingleComponentMH(
     locs_stdev=0.1,
     fluxes_stdev=2.5,
     fluxes_min=prior.flux_lower,
-    fluxes_max=1e9,
+    fluxes_max=prior.flux_upper,
 )
 
 aggmh = SingleComponentMH(
@@ -73,7 +73,7 @@ aggmh = SingleComponentMH(
     locs_stdev=0.1,
     fluxes_stdev=2.5,
     fluxes_min=prior.flux_lower,
-    fluxes_max=1e9,
+    fluxes_max=prior.flux_upper,
 )
 ##############################################
 
