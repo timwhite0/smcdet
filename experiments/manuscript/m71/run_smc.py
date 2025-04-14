@@ -46,10 +46,9 @@ prior = M71Prior(
     counts_rate=2.085,
     image_height=tile_dim,
     image_width=tile_dim,
-    flux_alpha=0.725662155092186,
-    flux_trunc=2652.514148851773,
-    flux_loc=-5.609777282510652,
-    flux_scale=6.241165406045003,
+    flux_alpha=0.27274554633062026,
+    flux_lower=0.6313902139663695,
+    flux_upper=16546.183593750004,
     pad=0.5,
 )
 
@@ -62,18 +61,18 @@ imagemodel = M71ImageModel(
 )
 
 mh = SingleComponentMH(
-    num_iters=50,
+    num_iters=100,
     locs_stdev=0.1,
     fluxes_stdev=2.5,
-    fluxes_min=prior.flux_min,
+    fluxes_min=prior.flux_lower,
     fluxes_max=1e9,
 )
 
 aggmh = SingleComponentMH(
-    num_iters=50,
+    num_iters=100,
     locs_stdev=0.1,
     fluxes_stdev=2.5,
-    fluxes_min=prior.flux_min,
+    fluxes_min=prior.flux_lower,
     fluxes_max=1e9,
 )
 ##############################################
@@ -81,7 +80,7 @@ aggmh = SingleComponentMH(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 10000
+num_catalogs_per_count = 5000
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 batch_size = 10
