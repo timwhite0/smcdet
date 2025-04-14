@@ -1,6 +1,7 @@
 import torch
-from scipy.stats import truncpareto
 from torch.distributions import Categorical, Normal, Pareto, Poisson, Uniform
+
+from smc.distributions import TruncatedPareto
 
 
 class PointProcessPrior(object):
@@ -162,10 +163,13 @@ class ParetoStarPrior(PointProcessPrior):
 
 
 class M71Prior(PoissonProcessPrior):
-    def __init__(self, *args, flux_alpha, flux_trunc, flux_loc, flux_scale, **kwargs):
+    def __init__(self, *args, flux_alpha, flux_lower, flux_upper, **kwargs):
         super().__init__(*args, **kwargs)
-        self.flux_min = flux_scale + flux_loc
-        self.flux_prior = truncpareto(flux_alpha, flux_trunc, flux_loc, flux_scale)
+        self.flux_alpha = flux_alpha
+        self.flux_lower = flux_lower
+        self.flux_upper = flux_upper
+
+        self.flux_prior = TruncatedPareto(flux_alpha, flux_lower, flux_upper)
 
     def sample(
         self,
@@ -178,10 +182,8 @@ class M71Prior(PoissonProcessPrior):
             num_catalogs, num_tiles_per_side, stratify_by_count, num_catalogs_per_count
         )
 
-        fluxes = torch.tensor(
-            self.flux_prior.rvs(
-                [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
-            )
+        fluxes = self.flux_prior.sample(
+            [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
         )
         fluxes *= self.counts_mask
 
@@ -192,10 +194,6 @@ class M71Prior(PoissonProcessPrior):
         log_prior = super().log_prob(counts, locs)
 
         return log_prior + (
-            torch.tensor(
-                self.flux_prior.logpdf(
-                    (fluxes + (self.flux_min) * (fluxes == 0)).cpu().numpy()
-                )
-            )
+            self.flux_prior.log_prob(fluxes + self.flux_prior.lower * (fluxes == 0))
             * self.counts_mask
         ).sum(-1)
