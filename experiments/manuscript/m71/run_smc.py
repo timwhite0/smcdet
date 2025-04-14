@@ -9,6 +9,7 @@ sys.path.append("/home/twhit/smc_object_detection/")
 
 import time
 
+import numpy as np
 import torch
 
 from smc.aggregate import Aggregate
@@ -91,6 +92,7 @@ num_batches = num_images // batch_size
 # RUN SMC
 
 torch.manual_seed(0)
+np.random.seed(0)
 
 for b in range(num_batches):
     runtime = torch.zeros([batch_size])
