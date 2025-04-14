@@ -4,15 +4,17 @@ from torch.distributions import Independent, Normal, Poisson
 
 
 class ImageModel(object):
-    def __init__(self, image_height, image_width, psf_stdev, background):
+    def __init__(self, image_height, image_width, background, psf_stdev=None):
         self.image_height = image_height
         self.image_width = image_width
-        self.psf_stdev = psf_stdev
         self.background = background
+        self.psf_stdev = psf_stdev
 
-        self.psf_density = Independent(
-            Normal(torch.zeros(1), self.psf_stdev * torch.ones(1)), 1
-        )
+        if self.psf_stdev is not None:
+            self.psf_density = Independent(
+                Normal(torch.zeros(1), self.psf_stdev * torch.ones(1)), 1
+            )
+
         self.update_psf_grid()
 
     def update_psf_grid(self):
@@ -22,14 +24,14 @@ class ImageModel(object):
         self.psf_grid = torch.stack([grid_h, grid_w], dim=-1)
 
     def psf(self, locs):
-        psf_grid_adjusted = self.psf_grid - (
-            rearrange(locs, "numH numW n d t -> numH numW n d 1 1 t") - 0.5
+        psf_grid_adjusted = (
+            self.psf_grid
+            - rearrange(locs, "numH numW n d t -> numH numW n d 1 1 t")
+            + 0.5
         )
         logpsf = self.psf_density.log_prob(psf_grid_adjusted)
         psf = logpsf.exp()
-        psf = rearrange(psf, "numH numW n d dimH dimW -> numH numW dimH dimW n d")
-
-        return psf
+        return rearrange(psf, "numH numW n d dimH dimW -> numH numW dimH dimW n d")
 
     def sample(self, locs, fluxes):
         psf = self.psf(locs)
@@ -108,9 +110,42 @@ class ImageModel(object):
 
 
 class M71ImageModel(ImageModel):
-    def __init__(self, *args, flux_calibration, **kwargs):
+    def __init__(self, *args, flux_calibration, psf_params, **kwargs):
         super().__init__(*args, **kwargs)
+
         self.flux_calibration = flux_calibration
+        self.sigma1, self.sigma2, self.sigmap, self.beta, self.b, self.p0 = psf_params
+
+        # compute PSF normalizing constant
+        psf_marginal_h = torch.arange(0, 32 * self.image_height)
+        psf_marginal_w = torch.arange(0, 32 * self.image_width)
+        grid_h, grid_w = torch.meshgrid(psf_marginal_h, psf_marginal_w, indexing="ij")
+        big_psf_grid = torch.stack([grid_h, grid_w], dim=-1)
+        one_loc_in_center = torch.tensor(
+            [psf_marginal_h.shape[0] / 2.0, psf_marginal_w.shape[0] / 2.0]
+        )
+        psf_grid_adjusted = (
+            big_psf_grid - rearrange(one_loc_in_center, "t -> 1 1 t") + 0.5
+        )
+        self.psf_normalizing_constant = self.unnormalized_psf(
+            (psf_grid_adjusted**2).sum(-1).sqrt()
+        ).sum()
+
+    def unnormalized_psf(self, r):
+        term1 = torch.exp(-(r**2) / (2 * self.sigma1))
+        term2 = self.b * torch.exp(-(r**2) / (2 * self.sigma2))
+        term3 = self.p0 * (1 + r**2 / (self.beta * self.sigmap)) ** (-self.beta / 2)
+        return (term1 + term2 + term3) / (1 + self.b + self.p0)
+
+    def psf(self, locs):
+        psf_grid_adjusted = (
+            self.psf_grid
+            - rearrange(locs, "numH numW n d t -> numH numW n d 1 1 t")
+            + 0.5
+        )
+        unnormalized_psf = self.unnormalized_psf((psf_grid_adjusted**2).sum(-1).sqrt())
+        psf = unnormalized_psf / self.psf_normalizing_constant
+        return rearrange(psf, "numH numW n d dimH dimW -> numH numW dimH dimW n d")
 
     def sample(self, locs, fluxes):
         psf = self.psf(locs)
