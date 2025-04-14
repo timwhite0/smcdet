@@ -10,3 +10,4 @@ experiments/**/*.out
 debug.py
 **/tmp**
 experiments/**/results/figures/
+**/line_profiler_results.txt
