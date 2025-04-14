@@ -1,5 +1,6 @@
 import torch
-from torch.distributions import Categorical, Normal, Pareto, Uniform
+from scipy.stats import truncpareto
+from torch.distributions import Categorical, Normal, Pareto, Poisson, Uniform
 
 
 class PointProcessPrior(object):
@@ -74,7 +75,25 @@ class PointProcessPrior(object):
         return log_prior
 
 
-# TODO: Move each subclass of PointProcessPrior to its own case_studies directory
+class PoissonProcessPrior(PointProcessPrior):
+    def __init__(self, max_objects, counts_rate, image_height, image_width, pad=0):
+        self.max_objects = max_objects
+        self.counts_rate = counts_rate
+        self.image_height = image_height
+        self.image_width = image_width
+        self.pad = pad
+        self.update_attrs()
+
+    # Override to change count_prior to Poisson (but keep loc_prior the same)
+    def update_attrs(self):
+        self.num_counts = self.max_objects + 1
+        self.count_prior = Poisson(self.counts_rate)
+        self.loc_prior = Uniform(
+            (0 - self.pad) * torch.ones(2),
+            torch.tensor((self.image_height + self.pad, self.image_width + self.pad)),
+        )
+
+
 class StarPrior(PointProcessPrior):
     def __init__(self, *args, flux_mean, flux_stdev, **kwargs):
         super().__init__(*args, **kwargs)
@@ -138,5 +157,45 @@ class ParetoStarPrior(PointProcessPrior):
 
         return log_prior + (
             self.flux_prior.log_prob(fluxes + self.flux_scale * (fluxes == 0))
+            * self.counts_mask
+        ).sum(-1)
+
+
+class M71Prior(PoissonProcessPrior):
+    def __init__(self, *args, flux_alpha, flux_trunc, flux_loc, flux_scale, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.flux_min = flux_scale + flux_loc
+        self.flux_prior = truncpareto(flux_alpha, flux_trunc, flux_loc, flux_scale)
+
+    def sample(
+        self,
+        num_catalogs=1,
+        num_tiles_per_side=1,
+        stratify_by_count=False,
+        num_catalogs_per_count=None,
+    ):
+        counts, locs = super().sample(
+            num_catalogs, num_tiles_per_side, stratify_by_count, num_catalogs_per_count
+        )
+
+        fluxes = torch.tensor(
+            self.flux_prior.rvs(
+                [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
+            )
+        )
+        fluxes *= self.counts_mask
+
+        return [counts, locs, fluxes]
+
+    # we define log_prob for stratify_by_count = True, to be used within SMCsampler
+    def log_prob(self, counts, locs, fluxes):
+        log_prior = super().log_prob(counts, locs)
+
+        return log_prior + (
+            torch.tensor(
+                self.flux_prior.logpdf(
+                    (fluxes + (self.flux_min) * (fluxes == 0)).cpu().numpy()
+                )
+            )
             * self.counts_mask
         ).sum(-1)
