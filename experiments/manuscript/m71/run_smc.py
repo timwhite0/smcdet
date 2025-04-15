@@ -7,6 +7,7 @@ import sys
 
 sys.path.append("/home/twhit/smc_object_detection/")
 
+import pickle
 import time
 
 import numpy as np
@@ -40,24 +41,28 @@ image_width = tiles.shape[2]
 # SPECIFY TILE-LEVEL IMAGE MODEL, PRIOR, AND MUTATION KERNEL
 
 tile_dim = 8
+pad = 2
+
+with open("data/params.pkl", "rb") as f:
+    params = pickle.load(f)
 
 prior = M71Prior(
     max_objects=6,
-    counts_rate=2.085,
+    counts_rate=params["counts_rate"] * ((tile_dim + 2 * pad) ** 2) / (tile_dim**2),
     image_height=tile_dim,
     image_width=tile_dim,
-    flux_alpha=0.27274554633062026,
-    flux_lower=0.6313902139663695,
-    flux_upper=16546.183593750004,
-    pad=2.0,
+    flux_alpha=params["flux_alpha"],
+    flux_lower=params["flux_lower"],
+    flux_upper=params["flux_upper"],
+    pad=pad,
 )
 
 imagemodel = M71ImageModel(
     image_height=tile_dim,
     image_width=tile_dim,
-    background=491.5867919921875,
-    flux_calibration=966.0794677734375,
-    psf_params=torch.tensor([1.36, 4.8475, 8.3333, 3.0000, 0.144, 0.0068779]),
+    background=params["background"],
+    flux_calibration=params["flux_calibration"],
+    psf_params=params["psf_params"],
     noise_scale=2.0,
 )
 
