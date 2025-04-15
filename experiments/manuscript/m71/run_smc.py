@@ -49,7 +49,7 @@ prior = M71Prior(
     flux_alpha=0.27274554633062026,
     flux_lower=0.6313902139663695,
     flux_upper=16546.183593750004,
-    pad=0.5,
+    pad=2.0,
 )
 
 imagemodel = M71ImageModel(
@@ -58,6 +58,7 @@ imagemodel = M71ImageModel(
     background=491.5867919921875,
     flux_calibration=966.0794677734375,
     psf_params=torch.tensor([1.36, 4.8475, 8.3333, 3.0000, 0.144, 0.0068779]),
+    noise_scale=2.0,
 )
 
 mh = SingleComponentMH(
@@ -80,7 +81,7 @@ aggmh = SingleComponentMH(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 5000
+num_catalogs_per_count = 10000
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 batch_size = 10
