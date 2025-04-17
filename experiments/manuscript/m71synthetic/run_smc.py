@@ -45,7 +45,7 @@ with open("../m71/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 tile_dim = 8
-pad = 2
+pad = 1
 
 prior = M71Prior(
     max_objects=6,
@@ -87,7 +87,7 @@ aggmh = SingleComponentMH(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 5000
+num_catalogs_per_count = 10000
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 batch_size = 20

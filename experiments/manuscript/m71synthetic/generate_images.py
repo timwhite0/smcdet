@@ -25,7 +25,7 @@ with open("../m71/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 image_dim = 8
-pad = 4
+pad = 1
 
 prior = M71Prior(
     max_objects=20,
