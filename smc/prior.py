@@ -1,5 +1,6 @@
+# isort: skip_file
 import torch
-from torch.distributions import Categorical, Normal, Pareto, Poisson, Uniform
+from torch.distributions import Categorical, Geometric, Normal, Pareto, Poisson, Uniform
 
 from smc.distributions import TruncatedPareto
 
@@ -89,6 +90,26 @@ class PoissonProcessPrior(PointProcessPrior):
     def update_attrs(self):
         self.num_counts = self.max_objects + 1
         self.count_prior = Poisson(self.counts_rate)
+        self.loc_prior = Uniform(
+            (0 - self.pad) * torch.ones(2),
+            torch.tensor((self.image_height + self.pad, self.image_width + self.pad)),
+        )
+
+
+class GeometricProcessPrior(PointProcessPrior):
+    def __init__(self, max_objects, image_height, image_width, pad=0):
+        self.max_objects = max_objects
+        self.image_height = image_height
+        self.image_width = image_width
+        self.pad = pad
+        self.update_attrs()
+
+    # Override to change count_prior to Geometric (but keep loc_prior the same)
+    def update_attrs(self):
+        self.num_counts = self.max_objects + 1
+        self.count_prior = Geometric(
+            1 - torch.exp(torch.tensor(-1.5))
+        )  # see Feder et al 2020
         self.loc_prior = Uniform(
             (0 - self.pad) * torch.ones(2),
             torch.tensor((self.image_height + self.pad, self.image_width + self.pad)),

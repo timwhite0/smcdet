@@ -7,6 +7,7 @@ import sys
 
 sys.path.append("/home/twhit/smc_object_detection/")
 
+import pickle
 import time
 
 import sep
@@ -27,10 +28,13 @@ tiles = torch.load("data/tiles.pt").to(device)
 true_counts = torch.load("data/counts_magcut.pt").to(device)
 true_fluxes = torch.load("data/fluxes_magcut.pt").to(device)
 
+with open("data/params.pkl", "rb") as f:
+    params = pickle.load(f)
+
 num_images = tiles.shape[0]
 image_height = tiles.shape[1]
 image_width = tiles.shape[2]
-background = 491.5867919921875
+background = params["background"]
 padding = (
     0  # if > 0, image is reflectively padded to allow detections outside the boundary
 )
