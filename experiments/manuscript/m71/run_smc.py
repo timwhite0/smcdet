@@ -69,7 +69,7 @@ imagemodel = M71ImageModel(
 mh = SingleComponentMH(
     num_iters=100,
     locs_stdev=0.1,
-    fluxes_stdev=2.5,
+    fluxes_stdev=50,
     fluxes_min=prior.flux_lower,
     fluxes_max=prior.flux_upper,
 )
@@ -77,7 +77,7 @@ mh = SingleComponentMH(
 aggmh = SingleComponentMH(
     num_iters=100,
     locs_stdev=0.1,
-    fluxes_stdev=2.5,
+    fluxes_stdev=50,
     fluxes_min=prior.flux_lower,
     fluxes_max=prior.flux_upper,
 )
