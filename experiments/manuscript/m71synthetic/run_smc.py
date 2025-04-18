@@ -45,7 +45,7 @@ with open("../m71/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 tile_dim = 8
-pad = 2
+pad = 1
 
 prior = M71Prior(
     max_objects=6,
