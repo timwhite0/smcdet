@@ -63,13 +63,13 @@ imagemodel = M71ImageModel(
     background=params["background"],
     flux_calibration=params["flux_calibration"],
     psf_params=params["psf_params"],
-    noise_scale=2.0,
+    noise_scale=1.5,
 )
 
 mh = SingleComponentMH(
     num_iters=100,
     locs_stdev=0.1,
-    fluxes_stdev=50,
+    fluxes_stdev=5,
     fluxes_min=prior.flux_lower,
     fluxes_max=prior.flux_upper,
 )
@@ -77,7 +77,7 @@ mh = SingleComponentMH(
 aggmh = SingleComponentMH(
     num_iters=100,
     locs_stdev=0.1,
-    fluxes_stdev=50,
+    fluxes_stdev=5,
     fluxes_min=prior.flux_lower,
     fluxes_max=prior.flux_upper,
 )
