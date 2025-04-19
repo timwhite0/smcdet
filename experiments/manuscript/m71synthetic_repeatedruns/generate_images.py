@@ -25,7 +25,8 @@ with open("../m71_manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 image_dim = 8
-pad = 2
+pad = 1
+noise_scale = 1.0
 
 prior = M71Prior(
     max_objects=20,
@@ -44,14 +45,14 @@ imagemodel = M71ImageModel(
     background=params["background"],
     flux_calibration=params["flux_calibration"],
     psf_params=params["psf_params"],
-    noise_scale=1.5,
+    noise_scale=noise_scale,
 )
 ##############################################
 
 ##############################################
 # GENERATE IMAGES
 
-torch.manual_seed(10)
+torch.manual_seed(4)
 
 num_images = 100
 
@@ -65,9 +66,9 @@ num_images = 100
     images,
 ) = imagemodel.generate(Prior=prior, num_images=num_images)
 
-# select one image each with count (including padding) = 2, 4
+# select one image each with count (including padding) = 1, 4
 indexes = [
-    torch.arange(images.shape[0])[unpruned_counts == 2][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 1][0].item(),
     torch.arange(images.shape[0])[unpruned_counts == 4][0].item(),
 ]
 
