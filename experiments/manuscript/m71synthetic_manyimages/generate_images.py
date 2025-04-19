@@ -25,10 +25,10 @@ with open("../m71_manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 image_dim = 8
-pad = 2
+pad = 1
 
 prior = M71Prior(
-    max_objects=20,
+    max_objects=100,
     counts_rate=params["counts_rate"] * ((image_dim + 2 * pad) ** 2) / (image_dim**2),
     image_height=image_dim,
     image_width=image_dim,
@@ -44,7 +44,7 @@ imagemodel = M71ImageModel(
     background=params["background"],
     flux_calibration=params["flux_calibration"],
     psf_params=params["psf_params"],
-    noise_scale=1.5,
+    noise_scale=1.0,
 )
 ##############################################
 
