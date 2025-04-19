@@ -41,7 +41,7 @@ image_width = images.shape[2]
 ##############################################
 # SPECIFY TILE-LEVEL IMAGE MODEL, PRIOR, AND MUTATION KERNEL
 
-with open("../m71/data/params.pkl", "rb") as f:
+with open("../m71_manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 tile_dim = 8
