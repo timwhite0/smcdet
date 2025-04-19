@@ -71,7 +71,7 @@ imagemodel = M71ImageModel(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND NUMBER OF RUNS
 
-num_catalogs_per_count = [1000, 3000, 5000]
+num_catalogs_per_count = [2500, 5000, 10000]
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 num_mh_iters = [25, 50, 100]
