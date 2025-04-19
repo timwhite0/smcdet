@@ -27,7 +27,7 @@ torch.set_default_device(device)
 ##############################################
 # LOAD IN IMAGES AND CATALOGS
 
-idx = [37, 246]  # selected based on pilot runs of SMC
+idx = [17, 28]  # selected based on pilot runs of SMC
 images = torch.load("../m71_manyimages/data/tiles.pt")[idx].to(device)
 pruned_counts = torch.load("../m71_manyimages/data/counts_magcut.pt")[idx].to(device)
 pruned_fluxes = torch.load("../m71_manyimages/data/counts_magcut.pt")[idx].to(device)
@@ -44,7 +44,8 @@ with open("../m71_manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 tile_dim = 8
-pad = 2
+pad = 1
+noise_scale = 2.0
 
 prior = M71Prior(
     max_objects=6,
@@ -63,7 +64,7 @@ imagemodel = M71ImageModel(
     background=params["background"],
     flux_calibration=params["flux_calibration"],
     psf_params=params["psf_params"],
-    noise_scale=1.5,
+    noise_scale=noise_scale,
 )
 ##############################################
 
