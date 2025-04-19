@@ -46,9 +46,10 @@ with open("../m71_manyimages/data/params.pkl", "rb") as f:
 
 tile_dim = 8
 pad = 1
+noise_scale = 1.0
 
 prior = M71Prior(
-    max_objects=8,
+    max_objects=6,
     counts_rate=params["counts_rate"] * ((tile_dim + 2 * pad) ** 2) / (tile_dim**2),
     image_height=tile_dim,
     image_width=tile_dim,
@@ -64,7 +65,7 @@ imagemodel = M71ImageModel(
     background=params["background"],
     flux_calibration=params["flux_calibration"],
     psf_params=params["psf_params"],
-    noise_scale=1.0,
+    noise_scale=noise_scale,
 )
 
 mh = SingleComponentMH(
@@ -87,7 +88,7 @@ aggmh = SingleComponentMH(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 5000
+num_catalogs_per_count = 10000
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
 batch_size = 20
