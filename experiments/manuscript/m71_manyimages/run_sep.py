@@ -12,21 +12,20 @@ import time
 
 import sep
 import torch
-from torch.nn.functional import pad
+from hydra import compose, initialize
+from hydra.utils import instantiate
 
-from utils.misc import select_cuda_device
+from smc.metrics import compute_precision_recall_f1, compute_tp_fn_fp
 
-device = select_cuda_device()
-torch.cuda.set_device(device)
-torch.set_default_device(device)
 ##############################################
 
 ##############################################
-# LOAD IN IMAGES AND CATALOGS
+# TUNE SEP HYPERPARAMETERS USING F1 ON HELD-OUT TILES
 
-tiles = torch.load("data/tiles.pt").to(device)
-true_counts = torch.load("data/counts_magcut.pt").to(device)
-true_fluxes = torch.load("data/fluxes_magcut.pt").to(device)
+tiles = torch.load("data/sep_tuning/tiles_nobg.pt")
+true_counts = torch.load("data/sep_tuning/counts_magcut.pt")
+true_fluxes = torch.load("data/sep_tuning/fluxes_magcut.pt")
+true_locs = torch.load("data/sep_tuning/locs_magcut.pt")
 
 with open("data/params.pkl", "rb") as f:
     params = pickle.load(f)
@@ -35,31 +34,28 @@ num_images = tiles.shape[0]
 image_height = tiles.shape[1]
 image_width = tiles.shape[2]
 background = params["background"]
-padding = (
-    0  # if > 0, image is reflectively padded to allow detections outside the boundary
-)
-padded_images = pad(tiles, (padding, padding, padding, padding), mode="reflect")
+flux_calibration = params["flux_calibration"]
 max_detections = 50
-##############################################
 
-##############################################
-# SELECT SEP HYPERPARAMETERS VIA GRID SEARCH
+with initialize(config_path=".", version_base=None):
+    cfg = compose(config_name="config")
+
+sdss = instantiate(cfg.surveys.sdss)
+sdss.prepare_data()
+# trim SDSS PSF to 5x5
+sdss_psf = sdss.psf.psf_galsim[sdss.image_id(0)][2].original.image.array[10:15, 10:15]
+
+mag_bins = torch.arange(14.0, 22.5, 8)  # we'll compute F1 for the bin [14.0, 22.5)
+
 
 print("Starting grid search...\n")
 
-thresh = torch.linspace(start=20, end=65, steps=10)
-minarea = torch.linspace(start=1, end=3, steps=3)
-deblend_cont = torch.logspace(start=-5, end=-3, steps=3)
-clean_param = torch.logspace(start=1, end=3, steps=3)
+thresh = tiles.flatten().quantile(torch.arange(0.10, 0.55, 0.05))
+minarea = torch.linspace(start=1, end=5, steps=5)
+deblend_cont = torch.logspace(start=-5, end=-1, steps=5)
+clean_param = torch.logspace(start=0, end=3, steps=4)
 
-pruned_count = torch.zeros(
-    thresh.shape[0],
-    minarea.shape[0],
-    deblend_cont.shape[0],
-    clean_param.shape[0],
-    num_images,
-)
-sep_mse = torch.zeros(
+sep_f1 = torch.zeros(
     thresh.shape[0], minarea.shape[0], deblend_cont.shape[0], clean_param.shape[0]
 )
 
@@ -70,51 +66,60 @@ for t in range(thresh.shape[0]):
                 print(f"thresh = {thresh[t]}")
                 print(f"minarea = {minarea[m]}")
                 print(f"deblend_cont = {deblend_cont[d]}")
-                print(f"clean_param = {clean_param[c]}\n")
+                print(f"clean_param = {clean_param[c]}")
+
+                counts = torch.zeros(num_images)
+                locs = torch.zeros(num_images, max_detections, 2)
+                fluxes = torch.zeros(num_images, max_detections)
 
                 for i in range(num_images):
                     sep_results = sep.extract(
-                        (padded_images[i] - background).cpu().numpy(),
+                        tiles[i].cpu().numpy(),
                         thresh=thresh[t],
                         minarea=minarea[m],
                         deblend_cont=deblend_cont[d],
                         deblend_nthresh=64,
-                        filter_kernel=None,
+                        filter_kernel=None,  # no filter works better than using the SDSS PSF
                         clean=True,
                         clean_param=clean_param[c],
                     )
 
-                    unpruned_count = len(sep_results)
-                    locs = torch.zeros(max_detections, 2)
-                    locs[:unpruned_count, 0] = (
-                        torch.from_numpy(sep_results["y"]) - padding + 0.5
+                    counts[i] = len(sep_results)
+                    locs[i, : counts[i].int(), 0] = (
+                        torch.from_numpy(sep_results["y"]) + 0.5
                     )  # match SMC locs convention
-                    locs[:unpruned_count, 1] = (
-                        torch.from_numpy(sep_results["x"]) - padding + 0.5
+                    locs[i, : counts[i].int(), 1] = (
+                        torch.from_numpy(sep_results["x"]) + 0.5
                     )  # match SMC locs convention
+                    fluxes[i, : counts[i].int()] = torch.from_numpy(sep_results["flux"])
 
-                    in_bounds = torch.all(
-                        torch.logical_and(
-                            locs > 0, locs < torch.tensor((image_height, image_width))
-                        ),
-                        dim=-1,
-                    )
-                    pruned_count[t, m, d, c, i] = in_bounds.sum(-1).float()
+                tp, fn, fp = compute_tp_fn_fp(
+                    true_counts,
+                    true_locs,
+                    true_fluxes,
+                    counts.unsqueeze(-1),
+                    locs.unsqueeze(-2),
+                    fluxes.unsqueeze(-1),
+                    1,
+                    0.5,
+                    0.5,
+                    mag_bins,
+                )
 
-                sep_mse[t, m, d, c] = (
-                    (pruned_count[t, m, d, c, :] - true_counts) ** 2
-                ).mean()
-                print(f"mse = {sep_mse[t,m,d,c]}\n\n")
+                precision, recall, f1 = compute_precision_recall_f1(tp, fn, fp)
+                sep_f1[t, m, d, c] = f1[0][-1]
+                print(f"f1 = {sep_f1[t,m,d,c].item()}\n")
 
 for t in range(thresh.shape[0]):
     for m in range(minarea.shape[0]):
         for d in range(deblend_cont.shape[0]):
             for c in range(clean_param.shape[0]):
-                if sep_mse[t, m, d, c] == sep_mse.min():
+                if sep_f1[t, m, d, c] == sep_f1.max():
                     thresh_best = thresh[t]
                     minarea_best = minarea[m]
                     deblend_cont_best = deblend_cont[d]
                     clean_param_best = clean_param[c]
+                    break
 
 print("Hyperparameters selected:")
 print(f"thresh = {thresh_best.item()}")
@@ -124,25 +129,28 @@ print(f"clean_param = {clean_param_best}\n")
 ##############################################
 
 ##############################################
-# RUN SEP
+# RUN SEP WITH OPTIMAL HYPERPARAMETERS ON THE SAME TILES AS SMC
 
 print("Running SEP...\n")
 
+tiles_eval = (
+    torch.load("data/tiles.pt") - background
+) / flux_calibration  # transform to raw tiles
 runtime = torch.zeros(num_images)
-unpruned_counts = torch.zeros(num_images)
-unpruned_locs = torch.zeros(num_images, max_detections, 2)
-unpruned_fluxes = torch.zeros(num_images, max_detections)
+sep_counts = torch.zeros(num_images)
+sep_locs = torch.zeros(num_images, max_detections, 2)
+sep_fluxes = torch.zeros(num_images, max_detections)
 
-for i in range(num_images):
+for i in range(tiles_eval.shape[0]):
     start = time.perf_counter()
 
     sep_results = sep.extract(
-        (padded_images[i] - background).cpu().numpy(),
+        tiles_eval[i].cpu().numpy(),
         thresh=thresh_best,
         minarea=minarea_best,
         deblend_cont=deblend_cont_best,
         deblend_nthresh=2000,
-        filter_kernel=None,
+        filter_kernel=None,  # no filter works better than using the SDSS PSF
         clean=True,
         clean_param=clean_param_best,
     )
@@ -150,19 +158,19 @@ for i in range(num_images):
     end = time.perf_counter()
 
     runtime[i] = end - start
-    unpruned_counts[i] = len(sep_results)
-    unpruned_count = unpruned_counts[i].int().item()
-    unpruned_locs[i, :unpruned_count, 0] = (
-        torch.from_numpy(sep_results["y"]) - padding + 0.5
+    sep_counts[i] = len(sep_results)
+    count = sep_counts[i].int().item()
+    sep_locs[i, :count, 0] = (
+        torch.from_numpy(sep_results["y"]) + 0.5
     )  # match SMC locs convention
-    unpruned_locs[i, :unpruned_count, 1] = (
-        torch.from_numpy(sep_results["x"]) - padding + 0.5
+    sep_locs[i, :count, 1] = (
+        torch.from_numpy(sep_results["x"]) + 0.5
     )  # match SMC locs convention
-    unpruned_fluxes[i, :unpruned_count] = torch.from_numpy(sep_results["flux"])
+    sep_fluxes[i, :count] = torch.from_numpy(sep_results["flux"])
 
 # remove unnecessary trailing zeros
-unpruned_locs = unpruned_locs[:, : unpruned_counts.max().int().item(), :]
-unpruned_fluxes = unpruned_fluxes[:, : unpruned_counts.max().int().item()]
+sep_locs = sep_locs[:, : sep_counts.max().int().item(), :]
+sep_fluxes = sep_fluxes[:, : sep_counts.max().int().item()]
 ##############################################
 
 ##############################################
@@ -171,9 +179,9 @@ unpruned_fluxes = unpruned_fluxes[:, : unpruned_counts.max().int().item()]
 print("Saving results...\n")
 
 torch.save(runtime.cpu(), "results/sep/runtime.pt")
-torch.save(unpruned_counts.cpu(), "results/sep/counts.pt")
-torch.save(unpruned_locs.cpu(), "results/sep/locs.pt")
-torch.save(unpruned_fluxes.cpu(), "results/sep/fluxes.pt")
+torch.save(sep_counts.cpu(), "results/sep/counts.pt")
+torch.save(sep_locs.cpu(), "results/sep/locs.pt")
+torch.save(sep_fluxes.cpu(), "results/sep/fluxes.pt")
 
 print("Done!")
 ##############################################
