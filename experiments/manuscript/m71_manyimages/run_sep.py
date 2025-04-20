@@ -136,12 +136,13 @@ print("Running SEP...\n")
 tiles_eval = (
     torch.load("data/tiles.pt") - background
 ) / flux_calibration  # transform to raw tiles
+num_images = tiles_eval.shape[0]
 runtime = torch.zeros(num_images)
 sep_counts = torch.zeros(num_images)
 sep_locs = torch.zeros(num_images, max_detections, 2)
 sep_fluxes = torch.zeros(num_images, max_detections)
 
-for i in range(tiles_eval.shape[0]):
+for i in range(num_images):
     start = time.perf_counter()
 
     sep_results = sep.extract(
