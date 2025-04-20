@@ -41,11 +41,12 @@ image_width = images.shape[2]
 ##############################################
 # SPECIFY TILE-LEVEL IMAGE MODEL, PRIOR, AND MUTATION KERNEL
 
-with open("../m71/data/params.pkl", "rb") as f:
+with open("../m71_manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 tile_dim = 8
-pad = 2
+pad = 1
+noise_scale = 1.0
 
 prior = M71Prior(
     max_objects=6,
@@ -64,7 +65,7 @@ imagemodel = M71ImageModel(
     background=params["background"],
     flux_calibration=params["flux_calibration"],
     psf_params=params["psf_params"],
-    noise_scale=1.5,
+    noise_scale=noise_scale,
 )
 
 mh = SingleComponentMH(

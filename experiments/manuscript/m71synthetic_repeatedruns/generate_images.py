@@ -21,11 +21,12 @@ torch.set_default_device(device)
 ##############################################
 
 ##############################################
-with open("../m71/data/params.pkl", "rb") as f:
+with open("../m71_manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 image_dim = 8
-pad = 2
+pad = 1
+noise_scale = 1.0
 
 prior = M71Prior(
     max_objects=20,
@@ -44,14 +45,16 @@ imagemodel = M71ImageModel(
     background=params["background"],
     flux_calibration=params["flux_calibration"],
     psf_params=params["psf_params"],
-    noise_scale=1.5,
+    noise_scale=noise_scale,
 )
 ##############################################
 
 ##############################################
-torch.manual_seed(0)
+# GENERATE IMAGES
 
-num_images = 1000
+torch.manual_seed(4)
+
+num_images = 100
 
 (
     unpruned_counts,
@@ -63,11 +66,17 @@ num_images = 1000
     images,
 ) = imagemodel.generate(Prior=prior, num_images=num_images)
 
-torch.save(pruned_counts.cpu(), "data/pruned_counts.pt")
-torch.save(pruned_locs.cpu(), "data/pruned_locs.pt")
-torch.save(pruned_fluxes.cpu(), "data/pruned_fluxes.pt")
-torch.save(unpruned_counts.cpu(), "data/unpruned_counts.pt")
-torch.save(unpruned_locs.cpu(), "data/unpruned_locs.pt")
-torch.save(unpruned_fluxes.cpu(), "data/unpruned_fluxes.pt")
-torch.save(images.cpu(), "data/images.pt")
+# select one image each with count (including padding) = 1, 4
+indexes = [
+    torch.arange(images.shape[0])[unpruned_counts == 1][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 4][0].item(),
+]
+
+torch.save(pruned_counts[indexes].cpu(), "data/pruned_counts.pt")
+torch.save(pruned_locs[indexes].cpu(), "data/pruned_locs.pt")
+torch.save(pruned_fluxes[indexes].cpu(), "data/pruned_fluxes.pt")
+torch.save(unpruned_counts[indexes].cpu(), "data/unpruned_counts.pt")
+torch.save(unpruned_locs[indexes].cpu(), "data/unpruned_locs.pt")
+torch.save(unpruned_fluxes[indexes].cpu(), "data/unpruned_fluxes.pt")
+torch.save(images[indexes].cpu(), "data/images.pt")
 ##############################################
