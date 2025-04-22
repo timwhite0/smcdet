@@ -15,19 +15,57 @@ import torch
 from hydra import compose, initialize
 from hydra.utils import instantiate
 
+from smc.images import M71ImageModel
 from smc.metrics import compute_precision_recall_f1, compute_tp_fn_fp
+from smc.prior import M71Prior
 
 ##############################################
 
 ##############################################
-# TUNE SEP HYPERPARAMETERS USING F1 ON HELD-OUT TILES
+# TUNE SEP HYPERPARAMETERS USING F1 ON A NEW BATCH OF 200 TILES
 
-tiles = torch.load("data/sep_tuning/tiles_nobg.pt")
-true_counts = torch.load("data/sep_tuning/counts_magcut.pt")
-true_fluxes = torch.load("data/sep_tuning/fluxes_magcut.pt")
-true_locs = torch.load("data/sep_tuning/locs_magcut.pt")
+with open("../m71_manyimages/data/params.pkl", "rb") as f:
+    params = pickle.load(f)
 
-with open("data/params.pkl", "rb") as f:
+image_dim = 8
+pad = 1
+noise_scale = 1.0
+
+prior = M71Prior(
+    max_objects=100,
+    counts_rate=params["counts_rate"] * ((image_dim + 2 * pad) ** 2) / (image_dim**2),
+    image_height=image_dim,
+    image_width=image_dim,
+    flux_alpha=params["flux_alpha"],
+    flux_lower=params["flux_lower"],
+    flux_upper=params["flux_upper"],
+    pad=pad,
+)
+
+imagemodel = M71ImageModel(
+    image_height=image_dim,
+    image_width=image_dim,
+    background=params["background"],
+    flux_calibration=params["flux_calibration"],
+    psf_params=params["psf_params"],
+    noise_scale=noise_scale,
+)
+
+torch.manual_seed(42)
+
+num_images = 200
+
+(
+    _,
+    _,
+    _,
+    true_counts,
+    true_locs,
+    true_fluxes,
+    tiles,
+) = imagemodel.generate(Prior=prior, num_images=num_images)
+
+with open("../m71_manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 num_images = tiles.shape[0]
@@ -37,7 +75,7 @@ background = params["background"]
 flux_calibration = params["flux_calibration"]
 max_detections = 50
 
-with initialize(config_path=".", version_base=None):
+with initialize(config_path="../m71_manyimages/", version_base=None):
     cfg = compose(config_name="config")
 
 sdss = instantiate(cfg.surveys.sdss)
@@ -50,7 +88,11 @@ mag_bins = torch.arange(14.0, 22.5, 8)  # we'll compute F1 for the bin [14.0, 22
 
 print("Starting grid search...\n")
 
-thresh = tiles.flatten().quantile(torch.arange(0.10, 0.55, 0.05))
+thresh = (
+    ((tiles - background) / flux_calibration)
+    .flatten()
+    .quantile(torch.arange(0.10, 0.55, 0.05))
+)
 minarea = torch.linspace(start=1, end=5, steps=5)
 deblend_cont = torch.logspace(start=-5, end=-1, steps=5)
 clean_param = torch.logspace(start=0, end=3, steps=4)
@@ -74,7 +116,7 @@ for t in range(thresh.shape[0]):
 
                 for i in range(num_images):
                     sep_results = sep.extract(
-                        tiles[i].cpu().numpy(),
+                        ((tiles[i] - background) / flux_calibration).numpy(),
                         thresh=thresh[t],
                         minarea=minarea[m],
                         deblend_cont=deblend_cont[d],
@@ -134,7 +176,7 @@ print(f"clean_param = {clean_param_best}\n")
 print("Running SEP...\n")
 
 tiles_eval = (
-    torch.load("data/tiles.pt") - background
+    torch.load("data/images.pt") - background
 ) / flux_calibration  # transform to raw tiles
 num_images = tiles_eval.shape[0]
 runtime = torch.zeros(num_images)
@@ -146,7 +188,7 @@ for i in range(num_images):
     start = time.perf_counter()
 
     sep_results = sep.extract(
-        tiles_eval[i].cpu().numpy(),
+        tiles_eval[i].contiguous().cpu().numpy(),
         thresh=thresh_best,
         minarea=minarea_best,
         deblend_cont=deblend_cont_best,
