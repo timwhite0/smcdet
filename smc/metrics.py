@@ -4,7 +4,7 @@ from einops import rearrange
 from scipy.optimize import linear_sum_assignment
 
 
-def compute_tp_fn_fp(
+def match_catalogs(
     true_counts,
     true_locs,
     true_fluxes,
@@ -18,9 +18,18 @@ def compute_tp_fn_fp(
 ):
     num_tiles = true_counts.shape[0]
 
-    tp = torch.zeros(num_tiles, num_est_catalogs_to_match, len(mag_bins))
-    fp = torch.zeros(num_tiles, num_est_catalogs_to_match, len(mag_bins))
-    fn = torch.zeros(num_tiles, num_est_catalogs_to_match, len(mag_bins))
+    num_true_total_bucketed = torch.zeros(
+        num_tiles, num_est_catalogs_to_match, len(mag_bins)
+    )
+    num_true_matches_bucketed = torch.zeros(
+        num_tiles, num_est_catalogs_to_match, len(mag_bins)
+    )
+    num_est_total_bucketed = torch.zeros(
+        num_tiles, num_est_catalogs_to_match, len(mag_bins)
+    )
+    num_est_matches_bucketed = torch.zeros(
+        num_tiles, num_est_catalogs_to_match, len(mag_bins)
+    )
 
     for t in range(num_tiles):
         true_locs_t = true_locs[t][: true_counts[t].int()]
@@ -61,16 +70,22 @@ def compute_tp_fn_fp(
                 -1
             ) == torch.arange(len(mag_bins))
 
-            tp[t, n] = true_mags_bucketed[true_matches].sum(0)
-            fn[t, n] = true_mags_bucketed.sum(0) - tp[t, n]
-            fp[t, n] = est_mags_bucketed.sum(0) - est_mags_bucketed[est_matches].sum(0)
+            num_true_total_bucketed[t, n] = true_mags_bucketed.sum(0)
+            num_true_matches_bucketed[t, n] = true_mags_bucketed[true_matches].sum(0)
+            num_est_total_bucketed[t, n] = est_mags_bucketed.sum(0)
+            num_est_matches_bucketed[t, n] = est_mags_bucketed[est_matches].sum(0)
 
-    return tp, fn, fp
+    return (
+        num_true_total_bucketed,
+        num_true_matches_bucketed,
+        num_est_total_bucketed,
+        num_est_matches_bucketed,
+    )
 
 
-def compute_precision_recall_f1(tp, fn, fp):
-    precision = (tp.sum(0) / (tp + fp).sum(0)).nan_to_num(0)
-    recall = (tp.sum(0) / (tp + fn).sum(0)).nan_to_num(0)
+def compute_precision_recall_f1(true_total, true_matches, est_total, est_matches):
+    precision = (est_matches.sum(0) / est_total.sum(0)).nan_to_num(0)
+    recall = (true_matches.sum(0) / true_total.sum(0)).nan_to_num(0)
     f1 = ((2 * precision * recall) / (precision + recall)).nan_to_num(0)
 
     return precision, recall, f1
