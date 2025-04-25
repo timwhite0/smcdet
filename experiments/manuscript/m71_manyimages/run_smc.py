@@ -42,7 +42,6 @@ image_width = tiles.shape[2]
 
 tile_dim = 8
 pad = 1
-noise_scale = 2.0
 
 with open("data/params.pkl", "rb") as f:
     params = pickle.load(f)
@@ -64,7 +63,7 @@ imagemodel = M71ImageModel(
     background=params["background"],
     flux_calibration=params["flux_calibration"],
     psf_params=params["psf_params"],
-    noise_scale=noise_scale,
+    noise_scale=params["noise_scale"],
 )
 
 mh = SingleComponentMH(
