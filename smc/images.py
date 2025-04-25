@@ -110,12 +110,21 @@ class ImageModel(object):
 
 
 class M71ImageModel(ImageModel):
-    def __init__(self, *args, flux_calibration, psf_params, noise_scale=1.0, **kwargs):
+    def __init__(
+        self,
+        *args,
+        flux_calibration,
+        psf_params,
+        noise_additive,
+        noise_multiplicative,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
 
         self.flux_calibration = flux_calibration
         self.sigma1, self.sigma2, self.sigmap, self.beta, self.b, self.p0 = psf_params
-        self.noise_scale = noise_scale
+        self.noise_additive = noise_additive
+        self.noise_multiplicative = noise_multiplicative
 
         # compute PSF normalizing constant
         psf_marginal_h = torch.arange(0, 32 * self.image_height)
@@ -156,7 +165,9 @@ class M71ImageModel(ImageModel):
                 self.flux_calibration * fluxes, "numH numW n d -> numH numW 1 1 n d"
             )
         ).sum(-1) + self.background
-        return Normal(rate, rate.sqrt()).sample()
+        return Normal(
+            rate, self.noise_additive + self.noise_multiplicative * rate.sqrt()
+        ).sample()
 
     def loglikelihood(self, tiled_image, locs, fluxes):
         psf = self.psf(locs)
@@ -168,7 +179,7 @@ class M71ImageModel(ImageModel):
         ).sum(-1) + self.background
 
         return (
-            Normal(rate, self.noise_scale * rate.sqrt())
+            Normal(rate, self.noise_additive + self.noise_multiplicative * rate.sqrt())
             .log_prob(tiled_image.unsqueeze(-1))
             .sum([-2, -3])
         )
