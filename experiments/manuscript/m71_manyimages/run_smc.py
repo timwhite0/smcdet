@@ -61,9 +61,10 @@ imagemodel = M71ImageModel(
     image_height=tile_dim,
     image_width=tile_dim,
     background=params["background"],
-    flux_calibration=params["flux_calibration"],
+    adu_per_nmgy=params["adu_per_nmgy"],
     psf_params=params["psf_params"],
-    noise_scale=params["noise_scale"],
+    noise_additive=params["noise_additive"],
+    noise_multiplicative=params["noise_multiplicative"],
 )
 
 mh = SingleComponentMH(
