@@ -26,7 +26,6 @@ with open("../m71_manyimages/data/params.pkl", "rb") as f:
 
 image_dim = 8
 pad = 1
-noise_scale = 1.0
 
 prior = M71Prior(
     max_objects=20,
@@ -43,16 +42,17 @@ imagemodel = M71ImageModel(
     image_height=image_dim,
     image_width=image_dim,
     background=params["background"],
-    flux_calibration=params["flux_calibration"],
+    adu_per_nmgy=params["adu_per_nmgy"],
     psf_params=params["psf_params"],
-    noise_scale=noise_scale,
+    noise_additive=params["noise_additive"],
+    noise_multiplicative=params["noise_multiplicative"],
 )
 ##############################################
 
 ##############################################
 # GENERATE IMAGES
 
-torch.manual_seed(4)
+torch.manual_seed(3)
 
 num_images = 100
 
