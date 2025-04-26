@@ -113,15 +113,15 @@ class M71ImageModel(ImageModel):
     def __init__(
         self,
         *args,
-        flux_calibration,
+        adu_per_nmgy,
         psf_params,
-        noise_additive,
-        noise_multiplicative,
+        noise_additive=0,
+        noise_multiplicative=1,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
 
-        self.flux_calibration = flux_calibration
+        self.adu_per_nmgy = adu_per_nmgy
         self.sigma1, self.sigma2, self.sigmap, self.beta, self.b, self.p0 = psf_params
         self.noise_additive = noise_additive
         self.noise_multiplicative = noise_multiplicative
@@ -162,7 +162,7 @@ class M71ImageModel(ImageModel):
         rate = (
             psf
             * rearrange(
-                self.flux_calibration * fluxes, "numH numW n d -> numH numW 1 1 n d"
+                self.adu_per_nmgy * fluxes, "numH numW n d -> numH numW 1 1 n d"
             )
         ).sum(-1) + self.background
         return Normal(
@@ -174,7 +174,7 @@ class M71ImageModel(ImageModel):
         rate = (
             psf
             * rearrange(
-                self.flux_calibration * fluxes, "numH numW n d -> numH numW 1 1 n d"
+                self.adu_per_nmgy * fluxes, "numH numW n d -> numH numW 1 1 n d"
             )
         ).sum(-1) + self.background
 
