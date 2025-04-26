@@ -30,7 +30,7 @@ torch.set_default_device(device)
 idx = [17, 28]  # selected based on pilot runs of SMC
 images = torch.load("../m71_manyimages/data/tiles.pt")[idx].to(device)
 pruned_counts = torch.load("../m71_manyimages/data/counts_magcut.pt")[idx].to(device)
-pruned_fluxes = torch.load("../m71_manyimages/data/counts_magcut.pt")[idx].to(device)
+pruned_fluxes = torch.load("../m71_manyimages/data/fluxes_magcut.pt")[idx].to(device)
 
 num_images = images.shape[0]
 image_height = images.shape[1]
@@ -45,7 +45,6 @@ with open("../m71_manyimages/data/params.pkl", "rb") as f:
 
 tile_dim = 8
 pad = 1
-noise_scale = 2.0
 
 prior = M71Prior(
     max_objects=6,
@@ -62,9 +61,10 @@ imagemodel = M71ImageModel(
     image_height=tile_dim,
     image_width=tile_dim,
     background=params["background"],
-    flux_calibration=params["flux_calibration"],
+    adu_per_nmgy=params["adu_per_nmgy"],
     psf_params=params["psf_params"],
-    noise_scale=noise_scale,
+    noise_additive=params["noise_additive"],
+    noise_multiplicative=params["noise_multiplicative"],
 )
 ##############################################
 
