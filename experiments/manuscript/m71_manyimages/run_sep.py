@@ -48,7 +48,7 @@ sdss.prepare_data()
 # trim SDSS PSF to 5x5
 sdss_psf = sdss.psf.psf_galsim[sdss.image_id(0)][2].original.image.array[10:15, 10:15]
 
-mag_bins = torch.arange(14.0, 22.5, 8)  # we'll compute F1 for the bin [14.0, 22.5)
+mag_bins = torch.arange(14.0, 21.5, 7)  # we'll compute F1 for the bin [14.0, 21.5)
 
 
 print("Starting grid search...\n")
