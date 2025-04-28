@@ -46,7 +46,6 @@ with open("../m71_manyimages/data/params.pkl", "rb") as f:
 
 tile_dim = 8
 pad = 1
-noise_scale = 1.0
 
 prior = M71Prior(
     max_objects=6,
@@ -63,9 +62,10 @@ imagemodel = M71ImageModel(
     image_height=tile_dim,
     image_width=tile_dim,
     background=params["background"],
-    flux_calibration=params["flux_calibration"],
+    adu_per_nmgy=params["adu_per_nmgy"],
     psf_params=params["psf_params"],
-    noise_scale=noise_scale,
+    noise_additive=params["noise_additive"],
+    noise_multiplicative=params["noise_multiplicative"],
 )
 ##############################################
 
@@ -75,7 +75,7 @@ imagemodel = M71ImageModel(
 num_catalogs_per_count = [2500, 5000, 10000]
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
-num_mh_iters = [50, 100, 150]
+num_mh_iters = [25, 50, 100]
 
 num_runs = 100
 ##############################################

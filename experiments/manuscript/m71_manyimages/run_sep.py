@@ -10,31 +10,35 @@ sys.path.append("/home/twhit/smc_object_detection/")
 import pickle
 import time
 
+import numpy as np
 import sep
 import torch
 from hydra import compose, initialize
 from hydra.utils import instantiate
 
-from smc.metrics import compute_precision_recall_f1, compute_tp_fn_fp
+from smc.metrics import compute_precision_recall_f1, match_catalogs
 
 ##############################################
 
 ##############################################
 # TUNE SEP HYPERPARAMETERS USING F1 ON HELD-OUT TILES
 
-tiles = torch.load("data/sep_tuning/tiles_nobg.pt")
-true_counts = torch.load("data/sep_tuning/counts_magcut.pt")
-true_fluxes = torch.load("data/sep_tuning/fluxes_magcut.pt")
-true_locs = torch.load("data/sep_tuning/locs_magcut.pt")
+tiles_tune = torch.load("data/sep/tiles_tune.pt")
+true_counts_tune = torch.load("data/sep/counts_magcut_tune.pt")
+true_fluxes_tune = torch.load("data/sep/fluxes_magcut_tune.pt")
+true_locs_tune = torch.load("data/sep/locs_magcut_tune.pt")
 
 with open("data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
-num_images = tiles.shape[0]
-image_height = tiles.shape[1]
-image_width = tiles.shape[2]
+num_images = tiles_tune.shape[0]
+image_height = tiles_tune.shape[1]
+image_width = tiles_tune.shape[2]
 background = params["background"]
-flux_calibration = params["flux_calibration"]
+adu_per_nmgy = params["adu_per_nmgy"]
+psf_params = params["psf_params"]
+noise_additive = params["noise_additive"]
+noise_multiplicative = params["noise_multiplicative"]
 max_detections = 50
 
 with initialize(config_path=".", version_base=None):
@@ -50,10 +54,10 @@ mag_bins = torch.arange(14.0, 22.5, 8)  # we'll compute F1 for the bin [14.0, 22
 
 print("Starting grid search...\n")
 
-thresh = tiles.flatten().quantile(torch.arange(0.10, 0.55, 0.05))
-minarea = torch.linspace(start=1, end=5, steps=5)
-deblend_cont = torch.logspace(start=-5, end=-1, steps=5)
-clean_param = torch.logspace(start=0, end=3, steps=4)
+thresh = torch.arange(start=1.0, end=8.5, step=0.5)
+minarea = torch.linspace(start=1, end=7, steps=7)
+deblend_cont = torch.logspace(start=-10, end=-2, steps=5)
+clean_param = torch.logspace(start=-1, end=2, steps=4)
 
 sep_f1 = torch.zeros(
     thresh.shape[0], minarea.shape[0], deblend_cont.shape[0], clean_param.shape[0]
@@ -74,13 +78,14 @@ for t in range(thresh.shape[0]):
 
                 for i in range(num_images):
                     sep_results = sep.extract(
-                        tiles[i].cpu().numpy(),
+                        (tiles_tune[i] - background).cpu().numpy(),
                         thresh=thresh[t],
                         minarea=minarea[m],
                         deblend_cont=deblend_cont[d],
                         deblend_nthresh=64,
                         filter_kernel=None,  # no filter works better than using the SDSS PSF
                         clean=True,
+                        var=np.sqrt(background),
                         clean_param=clean_param[c],
                     )
 
@@ -91,12 +96,14 @@ for t in range(thresh.shape[0]):
                     locs[i, : counts[i].int(), 1] = (
                         torch.from_numpy(sep_results["x"]) + 0.5
                     )  # match SMC locs convention
-                    fluxes[i, : counts[i].int()] = torch.from_numpy(sep_results["flux"])
+                    fluxes[i, : counts[i].int()] = (
+                        torch.from_numpy(sep_results["flux"]) / adu_per_nmgy
+                    )
 
-                tp, fn, fp = compute_tp_fn_fp(
-                    true_counts,
-                    true_locs,
-                    true_fluxes,
+                matching_results = match_catalogs(
+                    true_counts_tune,
+                    true_locs_tune,
+                    true_fluxes_tune,
                     counts.unsqueeze(-1),
                     locs.unsqueeze(-2),
                     fluxes.unsqueeze(-1),
@@ -105,8 +112,10 @@ for t in range(thresh.shape[0]):
                     0.5,
                     mag_bins,
                 )
-
-                precision, recall, f1 = compute_precision_recall_f1(tp, fn, fp)
+                true_total, true_matches, est_total, est_matches = matching_results
+                precision, recall, f1 = compute_precision_recall_f1(
+                    true_total, true_matches, est_total, est_matches
+                )
                 sep_f1[t, m, d, c] = f1[0][-1]
                 print(f"f1 = {sep_f1[t,m,d,c].item()}\n")
 
@@ -133,10 +142,9 @@ print(f"clean_param = {clean_param_best}\n")
 
 print("Running SEP...\n")
 
-tiles_eval = (
-    torch.load("data/tiles.pt") - background
-) / flux_calibration  # transform to raw tiles
-num_images = tiles_eval.shape[0]
+tiles_test = torch.load("data/tiles.pt")
+
+num_images = tiles_test.shape[0]
 runtime = torch.zeros(num_images)
 sep_counts = torch.zeros(num_images)
 sep_locs = torch.zeros(num_images, max_detections, 2)
@@ -146,13 +154,14 @@ for i in range(num_images):
     start = time.perf_counter()
 
     sep_results = sep.extract(
-        tiles_eval[i].cpu().numpy(),
+        (tiles_test[i] - background).cpu().numpy(),
         thresh=thresh_best,
         minarea=minarea_best,
         deblend_cont=deblend_cont_best,
-        deblend_nthresh=2000,
+        deblend_nthresh=64,
         filter_kernel=None,  # no filter works better than using the SDSS PSF
         clean=True,
+        var=np.sqrt(background),
         clean_param=clean_param_best,
     )
 
@@ -167,7 +176,7 @@ for i in range(num_images):
     sep_locs[i, :count, 1] = (
         torch.from_numpy(sep_results["x"]) + 0.5
     )  # match SMC locs convention
-    sep_fluxes[i, :count] = torch.from_numpy(sep_results["flux"])
+    sep_fluxes[i, :count] = torch.from_numpy(sep_results["flux"]) / adu_per_nmgy
 
 # remove unnecessary trailing zeros
 sep_locs = sep_locs[:, : sep_counts.max().int().item(), :]
