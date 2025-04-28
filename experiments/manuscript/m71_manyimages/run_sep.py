@@ -53,8 +53,8 @@ mag_bins = torch.arange(14.0, 22.5, 8)  # we'll compute F1 for the bin [14.0, 22
 
 print("Starting grid search...\n")
 
-thresh = torch.arange(start=1.5, end=5.5, step=0.5)
-minarea = torch.linspace(start=3, end=7, steps=5)
+thresh = torch.arange(start=1.0, end=3.25, step=0.25)
+minarea = torch.linspace(start=1, end=7, steps=7)
 deblend_cont = torch.logspace(start=-5, end=-1, steps=5)
 clean_param = torch.logspace(start=-1, end=3, steps=5)
 
@@ -85,13 +85,7 @@ for t in range(thresh.shape[0]):
                         filter_kernel=None,  # no filter works better than using the SDSS PSF
                         clean=True,
                         var=(
-                            (
-                                (
-                                    noise_additive[0]
-                                    + noise_multiplicative[0] * tiles_tune[i]
-                                ).sqrt()
-                            )
-                            ** 2
+                            noise_additive[0] + noise_multiplicative[0] * tiles_tune[i]
                         ).numpy(),
                         clean_param=clean_param[c],
                     )
@@ -168,9 +162,7 @@ for i in range(num_images):
         deblend_nthresh=64,
         filter_kernel=None,  # no filter works better than using the SDSS PSF
         clean=True,
-        var=(
-            ((noise_additive[0] + noise_multiplicative[0] * tiles_tune[i]).sqrt()) ** 2
-        ).numpy(),
+        var=(noise_additive[0] + noise_multiplicative[0] * tiles_test[i]).numpy(),
         clean_param=clean_param_best,
     )
 
