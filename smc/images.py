@@ -166,7 +166,7 @@ class M71ImageModel(ImageModel):
             )
         ).sum(-1) + self.background
         return Normal(
-            rate, self.noise_additive + self.noise_multiplicative * rate.sqrt()
+            rate, (self.noise_additive + self.noise_multiplicative * rate).sqrt()
         ).sample()
 
     def loglikelihood(self, tiled_image, locs, fluxes):
@@ -179,7 +179,9 @@ class M71ImageModel(ImageModel):
         ).sum(-1) + self.background
 
         return (
-            Normal(rate, self.noise_additive + self.noise_multiplicative * rate.sqrt())
+            Normal(
+                rate, (self.noise_additive + self.noise_multiplicative * rate).sqrt()
+            )
             .log_prob(tiled_image.unsqueeze(-1))
             .sum([-2, -3])
         )
