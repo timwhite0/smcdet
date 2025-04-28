@@ -52,7 +52,7 @@ imagemodel = M71ImageModel(
 ##############################################
 # GENERATE IMAGES
 
-torch.manual_seed(3)
+torch.manual_seed(1)
 
 num_images = 100
 
