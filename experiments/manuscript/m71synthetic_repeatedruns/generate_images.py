@@ -52,7 +52,7 @@ imagemodel = M71ImageModel(
 ##############################################
 # GENERATE IMAGES
 
-torch.manual_seed(1)
+torch.manual_seed(3)
 
 num_images = 100
 
@@ -66,10 +66,10 @@ num_images = 100
     images,
 ) = imagemodel.generate(Prior=prior, num_images=num_images)
 
-# select one image each with count (including padding) = 1, 4
+# select one image each with count (including padding) = 1, 3
 indexes = [
     torch.arange(images.shape[0])[unpruned_counts == 1][0].item(),
-    torch.arange(images.shape[0])[unpruned_counts == 4][0].item(),
+    torch.arange(images.shape[0])[unpruned_counts == 3][0].item(),
 ]
 
 torch.save(pruned_counts[indexes].cpu(), "data/pruned_counts.pt")
