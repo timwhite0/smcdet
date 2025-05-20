@@ -25,7 +25,7 @@ from smc.prior import M71Prior
 ##############################################
 # TUNE SEP HYPERPARAMETERS USING F1 ON A NEW BATCH OF 200 TILES
 
-with open("../m71_manyimages/data/params.pkl", "rb") as f:
+with open("../../m71/manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 image_dim = 8

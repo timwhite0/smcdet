@@ -40,7 +40,7 @@ image_width = images.shape[2]
 ##############################################
 # SPECIFY TILE-LEVEL IMAGE MODEL AND PRIOR
 
-with open("../m71_manyimages/data/params.pkl", "rb") as f:
+with open("../manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 tile_dim = 8

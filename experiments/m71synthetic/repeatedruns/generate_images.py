@@ -21,7 +21,7 @@ torch.set_default_device(device)
 ##############################################
 
 ##############################################
-with open("../m71_manyimages/data/params.pkl", "rb") as f:
+with open("../../m71/manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 image_dim = 8
