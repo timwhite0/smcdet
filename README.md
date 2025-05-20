@@ -6,8 +6,6 @@ Let $x$ denote an image. Let $s$ denote the number of objects in the image, and 
 
 Our motivating scientific example is the detection and [deblending](https://www.nature.com/articles/s42254-021-00353-y) of stars in astronomical images. Please see `notebooks/example.ipynb` and `experiments` for some examples. Other potential applications of our algorithm include cell detection in microscopy images and tree crown delineation in satellite images.
 
-![](https://i.ibb.co/d0v4LJRH/m71synth-detections-count4-all.png)
-
 To ensure that all of the notebooks and scripts in this repository run as intended, please make sure to create a new virtual environment and install all required packages:
 ```
 python -m venv .venv
