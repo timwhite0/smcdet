@@ -89,7 +89,11 @@ class PoissonProcessPrior(PointProcessPrior):
     # Override to change count_prior to Poisson (but keep loc_prior the same)
     def update_attrs(self):
         self.num_counts = self.max_objects + 1
-        self.count_prior = Poisson(self.counts_rate)
+        self.count_prior = Poisson(
+            self.counts_rate
+            * (self.image_height + 2 * self.pad)
+            * (self.image_width + 2 * self.pad)
+        )
         self.loc_prior = Uniform(
             (0 - self.pad) * torch.ones(2),
             torch.tensor((self.image_height + self.pad, self.image_width + self.pad)),

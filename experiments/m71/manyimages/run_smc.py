@@ -48,7 +48,7 @@ with open("data/params.pkl", "rb") as f:
 
 prior = M71Prior(
     max_objects=6,
-    counts_rate=params["counts_rate"] * ((tile_dim + 2 * pad) ** 2) / (tile_dim**2),
+    counts_rate=params["counts_rate"],
     image_height=tile_dim,
     image_width=tile_dim,
     flux_alpha=params["flux_alpha"],

@@ -33,7 +33,7 @@ pad = 1
 
 prior = M71Prior(
     max_objects=100,
-    counts_rate=params["counts_rate"] * ((image_dim + 2 * pad) ** 2) / (image_dim**2),
+    counts_rate=params["counts_rate"],
     image_height=image_dim,
     image_width=image_dim,
     flux_alpha=params["flux_alpha"],
