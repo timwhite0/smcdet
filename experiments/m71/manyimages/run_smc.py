@@ -29,8 +29,8 @@ torch.set_default_device(device)
 # LOAD IN IMAGES AND CATALOGS
 
 tiles = torch.load("data/tiles.pt").to(device)
-true_counts = torch.load("data/counts_magcut.pt").to(device)
-true_fluxes = torch.load("data/fluxes_magcut.pt").to(device)
+true_counts = torch.load("data/pruned_counts_magcut.pt").to(device)
+true_fluxes = torch.load("data/pruned_fluxes_magcut.pt").to(device)
 
 num_images = tiles.shape[0]
 image_height = tiles.shape[1]

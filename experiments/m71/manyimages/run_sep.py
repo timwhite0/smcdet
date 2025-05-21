@@ -24,9 +24,9 @@ from smc.metrics import compute_precision_recall_f1, match_catalogs
 # TUNE SEP HYPERPARAMETERS USING F1 ON HELD-OUT TILES
 
 tiles_tune = torch.load("data/sep/tiles_tune.pt")
-true_counts_tune = torch.load("data/sep/counts_magcut_tune.pt")
-true_fluxes_tune = torch.load("data/sep/fluxes_magcut_tune.pt")
-true_locs_tune = torch.load("data/sep/locs_magcut_tune.pt")
+true_counts_tune = torch.load("data/sep/pruned_counts_magcut_tune.pt")
+true_fluxes_tune = torch.load("data/sep/pruned_fluxes_magcut_tune.pt")
+true_locs_tune = torch.load("data/sep/pruned_locs_magcut_tune.pt")
 
 with open("data/params.pkl", "rb") as f:
     params = pickle.load(f)
