@@ -29,8 +29,12 @@ torch.set_default_device(device)
 
 idx = [17, 28]  # selected based on pilot runs of SMC
 images = torch.load("../m71_manyimages/data/tiles.pt")[idx].to(device)
-pruned_counts = torch.load("../m71_manyimages/data/counts_magcut.pt")[idx].to(device)
-pruned_fluxes = torch.load("../m71_manyimages/data/fluxes_magcut.pt")[idx].to(device)
+pruned_counts = torch.load("../m71_manyimages/data/pruned_counts_magcut.pt")[idx].to(
+    device
+)
+pruned_fluxes = torch.load("../m71_manyimages/data/pruned_fluxes_magcut.pt")[idx].to(
+    device
+)
 
 num_images = images.shape[0]
 image_height = images.shape[1]
