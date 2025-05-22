@@ -10,9 +10,9 @@ sys.path.append("/home/twhit/smc_object_detection/")
 import pickle
 
 import torch
+from einops import rearrange
 
 from smc.images import M71ImageModel
-from smc.prior import M71Prior
 from utils.misc import select_cuda_device
 
 device = select_cuda_device()
@@ -21,22 +21,20 @@ torch.set_default_device(device)
 ##############################################
 
 ##############################################
+# LOAD M71 CATALOGS
+
+m71_unpruned_locs = torch.load("../../m71/manyimages/data/unpruned_locs_magcut.pt").to(
+    device
+)
+m71_unpruned_fluxes = torch.load(
+    "../../m71/manyimages/data/unpruned_fluxes_magcut.pt"
+).to(device)
+
 with open("../../m71/manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 image_dim = 8
 pad = 1
-
-prior = M71Prior(
-    max_objects=100,
-    counts_rate=params["counts_rate"],
-    image_height=image_dim,
-    image_width=image_dim,
-    flux_alpha=params["flux_alpha"],
-    flux_lower=params["flux_lower"],
-    flux_upper=params["flux_upper"],
-    pad=pad,
-)
 
 imagemodel = M71ImageModel(
     image_height=image_dim,
@@ -50,25 +48,14 @@ imagemodel = M71ImageModel(
 ##############################################
 
 ##############################################
-torch.manual_seed(0)
+# GENERATE SEMI-SYNTHETIC IMAGES
+torch.manual_seed(42)
 
-num_images = 1000
+images = imagemodel.sample(
+    rearrange(m71_unpruned_locs, "n d t -> 1 1 n d t"),
+    rearrange(m71_unpruned_fluxes, "n d -> 1 1 n d"),
+)
+images = rearrange(images.squeeze([0, 1]), "dimH dimW n -> n dimH dimW")
 
-(
-    unpruned_counts,
-    unpruned_locs,
-    unpruned_fluxes,
-    pruned_counts,
-    pruned_locs,
-    pruned_fluxes,
-    images,
-) = imagemodel.generate(Prior=prior, num_images=num_images)
-
-torch.save(pruned_counts.cpu(), "data/pruned_counts.pt")
-torch.save(pruned_locs.cpu(), "data/pruned_locs.pt")
-torch.save(pruned_fluxes.cpu(), "data/pruned_fluxes.pt")
-torch.save(unpruned_counts.cpu(), "data/unpruned_counts.pt")
-torch.save(unpruned_locs.cpu(), "data/unpruned_locs.pt")
-torch.save(unpruned_fluxes.cpu(), "data/unpruned_fluxes.pt")
 torch.save(images.cpu(), "data/images.pt")
 ##############################################

@@ -23,12 +23,16 @@ from smc.metrics import compute_precision_recall_f1, match_catalogs
 ##############################################
 # TUNE SEP HYPERPARAMETERS USING F1 ON HELD-OUT TILES
 
-tiles_tune = torch.load("data/sep/tiles_tune.pt")
-true_counts_tune = torch.load("data/sep/pruned_counts_magcut_tune.pt")
-true_fluxes_tune = torch.load("data/sep/pruned_fluxes_magcut_tune.pt")
-true_locs_tune = torch.load("data/sep/pruned_locs_magcut_tune.pt")
+tiles_tune = torch.load("../../m71/manyimages/data/sep/tiles_tune.pt")
+true_counts_tune = torch.load(
+    "../../m71/manyimages/data/sep/pruned_counts_magcut_tune.pt"
+)
+true_fluxes_tune = torch.load(
+    "../../m71/manyimages/data/sep/pruned_fluxes_magcut_tune.pt"
+)
+true_locs_tune = torch.load("../../m71/manyimages/data/sep/pruned_locs_magcut_tune.pt")
 
-with open("data/params.pkl", "rb") as f:
+with open("../../m71/manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 num_images = tiles_tune.shape[0]
@@ -41,7 +45,7 @@ noise_additive = params["noise_additive"]
 noise_multiplicative = params["noise_multiplicative"]
 max_detections = 50
 
-with initialize(config_path=".", version_base=None):
+with initialize(config_path="../../m71/manyimages/", version_base=None):
     cfg = compose(config_name="config")
 
 sdss = instantiate(cfg.surveys.sdss)
@@ -142,7 +146,7 @@ print(f"clean_param = {clean_param_best}\n")
 
 print("Running SEP...\n")
 
-tiles_test = torch.load("data/tiles.pt")
+tiles_test = torch.load("data/images.pt")
 
 num_images = tiles_test.shape[0]
 runtime = torch.zeros(num_images)

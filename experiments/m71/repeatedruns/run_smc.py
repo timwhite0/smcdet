@@ -29,8 +29,12 @@ torch.set_default_device(device)
 
 idx = [17, 28]  # selected based on pilot runs of SMC
 images = torch.load("../m71_manyimages/data/tiles.pt")[idx].to(device)
-pruned_counts = torch.load("../m71_manyimages/data/counts_magcut.pt")[idx].to(device)
-pruned_fluxes = torch.load("../m71_manyimages/data/fluxes_magcut.pt")[idx].to(device)
+pruned_counts = torch.load("../m71_manyimages/data/pruned_counts_magcut.pt")[idx].to(
+    device
+)
+pruned_fluxes = torch.load("../m71_manyimages/data/pruned_fluxes_magcut.pt")[idx].to(
+    device
+)
 
 num_images = images.shape[0]
 image_height = images.shape[1]
@@ -40,7 +44,7 @@ image_width = images.shape[2]
 ##############################################
 # SPECIFY TILE-LEVEL IMAGE MODEL AND PRIOR
 
-with open("../m71_manyimages/data/params.pkl", "rb") as f:
+with open("../manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 tile_dim = 8
@@ -48,7 +52,7 @@ pad = 1
 
 prior = M71Prior(
     max_objects=6,
-    counts_rate=params["counts_rate"] * ((tile_dim + 2 * pad) ** 2) / (tile_dim**2),
+    counts_rate=params["counts_rate"],
     image_height=tile_dim,
     image_width=tile_dim,
     flux_alpha=params["flux_alpha"],

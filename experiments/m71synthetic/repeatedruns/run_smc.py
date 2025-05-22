@@ -41,7 +41,7 @@ image_width = images.shape[2]
 ##############################################
 # SPECIFY TILE-LEVEL IMAGE MODEL AND PRIOR
 
-with open("../m71_manyimages/data/params.pkl", "rb") as f:
+with open("../../m71/manyimages/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 tile_dim = 8
@@ -49,7 +49,7 @@ pad = 1
 
 prior = M71Prior(
     max_objects=6,
-    counts_rate=params["counts_rate"] * ((tile_dim + 2 * pad) ** 2) / (tile_dim**2),
+    counts_rate=params["counts_rate"],
     image_height=tile_dim,
     image_width=tile_dim,
     flux_alpha=params["flux_alpha"],

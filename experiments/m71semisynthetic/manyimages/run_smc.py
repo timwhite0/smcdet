@@ -10,7 +10,6 @@ sys.path.append("/home/twhit/smc_object_detection/")
 import pickle
 import time
 
-import numpy as np
 import torch
 
 from smc.aggregate import Aggregate
@@ -28,23 +27,33 @@ torch.set_default_device(device)
 ##############################################
 # LOAD IN IMAGES AND CATALOGS
 
-tiles = torch.load("data/tiles.pt").to(device)
-true_counts = torch.load("data/pruned_counts_magcut.pt").to(device)
-true_fluxes = torch.load("data/pruned_fluxes_magcut.pt").to(device)
+images = torch.load("data/images.pt").to(device)
+unpruned_counts = torch.load("../../m71/manyimages/data/unpruned_counts_magcut.pt").to(
+    device
+)
+pruned_counts = torch.load("../../m71/manyimages/data/pruned_counts_magcut.pt").to(
+    device
+)
+unpruned_fluxes = torch.load("../../m71/manyimages/data/unpruned_fluxes_magcut.pt").to(
+    device
+)
+pruned_fluxes = torch.load("../../m71/manyimages/data/pruned_fluxes_magcut.pt").to(
+    device
+)
 
-num_images = tiles.shape[0]
-image_height = tiles.shape[1]
-image_width = tiles.shape[2]
+num_images = images.shape[0]
+image_height = images.shape[1]
+image_width = images.shape[2]
 ##############################################
 
 ##############################################
 # SPECIFY TILE-LEVEL IMAGE MODEL, PRIOR, AND MUTATION KERNEL
 
+with open("../../m71/manyimages/data/params.pkl", "rb") as f:
+    params = pickle.load(f)
+
 tile_dim = 8
 pad = 1
-
-with open("data/params.pkl", "rb") as f:
-    params = pickle.load(f)
 
 prior = M71Prior(
     max_objects=6,
@@ -90,7 +99,7 @@ aggmh = SingleComponentMH(
 num_catalogs_per_count = 10000
 num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
 
-batch_size = 10
+batch_size = 20
 num_batches = num_images // batch_size
 ##############################################
 
@@ -98,7 +107,6 @@ num_batches = num_images // batch_size
 # RUN SMC
 
 torch.manual_seed(0)
-np.random.seed(0)
 
 for b in range(num_batches):
     runtime = torch.zeros([batch_size])
@@ -112,15 +120,20 @@ for b in range(num_batches):
         image_index = b * batch_size + i
 
         print(f"image {image_index + 1} of {num_images}")
-        print(f"Number of stars within image boundary: {true_counts[image_index]}")
+        print(f"Number of stars including padding: {unpruned_counts[image_index]}")
+        print(f"Number of stars within image boundary: {pruned_counts[image_index]}")
+        print(
+            "Total intrinsic flux of all stars (including padding): ",
+            f"{unpruned_fluxes[image_index].sum(-1).round()}",
+        )
         print(
             "Total intrinsic flux of stars within image boundary: ",
-            f"{true_fluxes[image_index].sum(-1).round()}",
+            f"{pruned_fluxes[image_index].sum(-1).round()}",
         )
-        print(f"Total observed flux: {tiles[image_index].sum().round()}\n")
+        print(f"Total observed flux: {images[image_index].sum().round()}\n")
 
         sampler = SMCsampler(
-            image=tiles[image_index],
+            image=images[image_index],
             tile_dim=tile_dim,
             Prior=prior,
             ImageModel=imagemodel,
@@ -129,7 +142,6 @@ for b in range(num_batches):
             ess_threshold_prop=0.5,
             resample_method="multinomial",
             max_smc_iters=100,
-            print_every=2,
         )
 
         start = time.perf_counter()
