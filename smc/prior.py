@@ -6,7 +6,8 @@ from smc.distributions import TruncatedPareto
 
 
 class PointProcessPrior(object):
-    def __init__(self, max_objects, image_height, image_width, pad=0):
+    def __init__(self, min_objects, max_objects, image_height, image_width, pad=0):
+        self.min_objects = min_objects
         self.max_objects = max_objects
         self.image_height = image_height
         self.image_width = image_width
@@ -14,7 +15,7 @@ class PointProcessPrior(object):
         self.update_attrs()
 
     def update_attrs(self):
-        self.num_counts = self.max_objects + 1
+        self.num_counts = self.max_objects - self.min_objects + 1
         self.count_prior = Categorical(
             (1 / self.num_counts) * torch.ones(self.num_counts)
         )
@@ -41,21 +42,22 @@ class PointProcessPrior(object):
 
         if stratify_by_count is False:
             self.num = num_catalogs
-            counts = self.count_prior.sample(
+            count_indices = self.count_prior.sample(
                 [num_tiles_per_side, num_tiles_per_side, self.num]
-            )
+            ).int()
+            counts = torch.arange(self.min_objects, self.max_objects + 1)[count_indices]
         elif stratify_by_count is True:
             self.num = self.num_counts * num_catalogs_per_count
-            strata = torch.arange(self.num_counts).repeat_interleave(
-                num_catalogs_per_count
-            )
+            strata = torch.arange(
+                self.min_objects, self.max_objects + 1
+            ).repeat_interleave(num_catalogs_per_count)
             counts = strata * torch.ones(
                 num_tiles_per_side, num_tiles_per_side, self.num
             )
 
-        self.counts_mask = torch.arange(1, self.num_counts).unsqueeze(
+        self.counts_mask = torch.arange(0, self.max_objects).unsqueeze(
             0
-        ) <= counts.unsqueeze(3)
+        ) < counts.unsqueeze(3)
         locs = self.loc_prior.sample(
             [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
         )
@@ -65,9 +67,9 @@ class PointProcessPrior(object):
 
     # we define log_prob for stratify_by_count = True, to be used within SMCsampler
     def log_prob(self, counts, locs):
-        self.counts_mask = torch.arange(1, self.num_counts).unsqueeze(
+        self.counts_mask = torch.arange(0, self.max_objects).unsqueeze(
             0
-        ) <= counts.unsqueeze(-1)
+        ) < counts.unsqueeze(-1)
 
         log_prior = self.count_prior.log_prob(counts)
         log_prior += (
@@ -78,7 +80,10 @@ class PointProcessPrior(object):
 
 
 class PoissonProcessPrior(PointProcessPrior):
-    def __init__(self, max_objects, counts_rate, image_height, image_width, pad=0):
+    def __init__(
+        self, min_objects, max_objects, counts_rate, image_height, image_width, pad=0
+    ):
+        self.min_objects = min_objects
         self.max_objects = max_objects
         self.counts_rate = counts_rate
         self.image_height = image_height
@@ -88,7 +93,7 @@ class PoissonProcessPrior(PointProcessPrior):
 
     # Override to change count_prior to Poisson (but keep loc_prior the same)
     def update_attrs(self):
-        self.num_counts = self.max_objects + 1
+        self.num_counts = self.max_objects - self.min_objects + 1
         self.count_prior = Poisson(
             self.counts_rate
             * (self.image_height + 2 * self.pad)
@@ -101,7 +106,8 @@ class PoissonProcessPrior(PointProcessPrior):
 
 
 class GeometricProcessPrior(PointProcessPrior):
-    def __init__(self, max_objects, image_height, image_width, pad=0):
+    def __init__(self, min_objects, max_objects, image_height, image_width, pad=0):
+        self.min_objects = min_objects
         self.max_objects = max_objects
         self.image_height = image_height
         self.image_width = image_width
@@ -110,7 +116,7 @@ class GeometricProcessPrior(PointProcessPrior):
 
     # Override to change count_prior to Geometric (but keep loc_prior the same)
     def update_attrs(self):
-        self.num_counts = self.max_objects + 1
+        self.num_counts = self.max_objects - self.min_objects + 1
         self.count_prior = Geometric(
             1 - torch.exp(torch.tensor(-1.5))
         )  # see Feder et al 2020
