@@ -41,13 +41,13 @@ image_width = tiles.shape[2]
 # SPECIFY TILE-LEVEL IMAGE MODEL, PRIOR, AND MUTATION KERNEL
 
 tile_dim = 8
-pad = 1
+pad = 4
 
 with open("data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 prior = M71Prior(
-    max_objects=6,
+    max_objects=10,
     counts_rate=params["counts_rate"],
     image_height=tile_dim,
     image_width=tile_dim,
