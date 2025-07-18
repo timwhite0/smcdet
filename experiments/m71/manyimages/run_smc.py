@@ -47,6 +47,7 @@ with open("data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 prior = M71Prior(
+    min_objects=0,
     max_objects=10,
     counts_rate=params["counts_rate"],
     image_height=tile_dim,
@@ -88,7 +89,7 @@ aggmh = SingleComponentMH(
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
 num_catalogs_per_count = 10000
-num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
+num_catalogs = (prior.max_objects - prior.min_objects + 1) * num_catalogs_per_count
 
 batch_size = 10
 num_batches = num_images // batch_size
