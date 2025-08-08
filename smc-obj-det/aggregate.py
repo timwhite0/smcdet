@@ -551,10 +551,10 @@ class Aggregate(object):
                     print(
                         (
                             f"iteration {self.iter}: "
-                            f"temperature in [{round(self.temperature.min().item(),2)}, "
-                            f"{round(self.temperature.max().item(),2)}], "
-                            f"acceptance rate in [{round(self.mutation_acc_rates.min().item(),2)}, "
-                            f"{round(self.mutation_acc_rates.max().item(),2)}]"
+                            f"temperature in [{round(self.temperature.min().item(), 2)}, "
+                            f"{round(self.temperature.max().item(), 2)}], "
+                            f"accept rate in [{round(self.mutation_acc_rates.min().item(), 2)}, "
+                            f"{round(self.mutation_acc_rates.max().item(), 2)}]"
                         )
                     )
 
@@ -640,5 +640,5 @@ class Aggregate(object):
         )
 
         print(
-            f"number of unique catalogs = {self.fluxes[0,0].sum(-1).unique(dim=0).shape[0]}"
+            f"number of unique catalogs = {self.fluxes[0, 0].sum(-1).unique(dim=0).shape[0]}"
         )
