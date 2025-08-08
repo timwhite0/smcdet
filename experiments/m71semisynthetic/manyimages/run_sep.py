@@ -16,7 +16,7 @@ import torch
 from hydra import compose, initialize
 from hydra.utils import instantiate
 
-from smc.metrics import compute_precision_recall_f1, match_catalogs
+from smcdet.metrics import compute_precision_recall_f1, match_catalogs
 
 ##############################################
 
@@ -121,7 +121,7 @@ for t in range(thresh.shape[0]):
                     true_total, true_matches, est_total, est_matches
                 )
                 sep_f1[t, m, d, c] = f1[0][-1]
-                print(f"f1 = {sep_f1[t,m,d,c].item()}\n")
+                print(f"f1 = {sep_f1[t, m, d, c].item()}\n")
 
 for t in range(thresh.shape[0]):
     for m in range(minarea.shape[0]):

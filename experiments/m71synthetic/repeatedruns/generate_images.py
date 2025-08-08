@@ -11,8 +11,8 @@ import pickle
 
 import torch
 
-from smc.images import M71ImageModel
-from smc.prior import M71Prior
+from smcdet.images import M71ImageModel
+from smcdet.prior import M71Prior
 from utils.misc import select_cuda_device
 
 device = select_cuda_device()

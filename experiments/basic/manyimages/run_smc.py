@@ -12,11 +12,11 @@ import time
 import numpy as np
 import torch
 
-from smc.aggregate import Aggregate
-from smc.images import ImageModel
-from smc.kernel import SingleComponentMH
-from smc.prior import ParetoStarPrior
-from smc.sampler import SMCsampler
+from smcdet.aggregate import Aggregate
+from smcdet.images import ImageModel
+from smcdet.kernel import SingleComponentMH
+from smcdet.prior import ParetoStarPrior
+from smcdet.sampler import SMCsampler
 from utils.misc import select_cuda_device
 
 device = select_cuda_device()

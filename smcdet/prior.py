@@ -2,7 +2,7 @@
 import torch
 from torch.distributions import Categorical, Geometric, Normal, Pareto, Poisson, Uniform
 
-from smc.distributions import TruncatedPareto
+from smcdet.distributions import TruncatedPareto
 
 
 class PointProcessPrior(object):
