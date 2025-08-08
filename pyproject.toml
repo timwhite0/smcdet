@@ -1,5 +1,5 @@
 [project]
-name = "smc-obj-det"
+name = "smcdet"
 version = "0.1.0"
 description = "Probabilistic object detection with sequential Monte Carlo"
 authors = [
