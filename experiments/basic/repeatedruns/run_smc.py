@@ -12,11 +12,11 @@ import time
 import numpy as np
 import torch
 
-from smc.aggregate import Aggregate
-from smc.images import ImageModel
-from smc.kernel import SingleComponentMH
-from smc.prior import ParetoStarPrior
-from smc.sampler import SMCsampler
+from smcdet.aggregate import Aggregate
+from smcdet.images import ImageModel
+from smcdet.kernel import SingleComponentMH
+from smcdet.prior import ParetoStarPrior
+from smcdet.sampler import SMCsampler
 from utils.misc import select_cuda_device
 
 device = select_cuda_device()
@@ -170,19 +170,19 @@ for i in range(num_images):
 
             torch.save(
                 runtime.cpu(),
-                f"results/smc/runtime_image{i+1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
+                f"results/smc/runtime_image{i + 1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
             )
             torch.save(
                 num_iters.cpu(),
-                f"results/smc/num_iters_image{i+1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
+                f"results/smc/num_iters_image{i + 1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
             )
             torch.save(
                 log_normalizing_constants.cpu(),
-                f"results/smc/log_norm_const_image{i+1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
+                f"results/smc/log_norm_const_image{i + 1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
             )
             torch.save(
                 total_intrinsic_flux.cpu(),
-                f"results/smc/total_intrinsic_flux_image{i+1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
+                f"results/smc/total_intrinsic_flux_image{i + 1}_cats{num_catalogs_per_count[c]}_mh{num_mh_iters[m]}.pt",  # noqa: E501
             )
 
 print("Done!")

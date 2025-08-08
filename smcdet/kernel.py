@@ -1,7 +1,7 @@
 import torch
 from torch.distributions import Multinomial, Uniform
 
-from smc.distributions import TruncatedDiagonalMVN
+from smcdet.distributions import TruncatedDiagonalMVN
 
 
 class SingleComponentMH(object):

@@ -13,11 +13,11 @@ import time
 import numpy as np
 import torch
 
-from smc.aggregate import Aggregate
-from smc.images import M71ImageModel
-from smc.kernel import SingleComponentMH
-from smc.prior import M71Prior
-from smc.sampler import SMCsampler
+from smcdet.aggregate import Aggregate
+from smcdet.images import M71ImageModel
+from smcdet.kernel import SingleComponentMH
+from smcdet.prior import M71Prior
+from smcdet.sampler import SMCsampler
 from utils.misc import select_cuda_device
 
 device = select_cuda_device()
@@ -41,13 +41,14 @@ image_width = tiles.shape[2]
 # SPECIFY TILE-LEVEL IMAGE MODEL, PRIOR, AND MUTATION KERNEL
 
 tile_dim = 8
-pad = 1
+pad = 4
 
 with open("data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 prior = M71Prior(
-    max_objects=6,
+    min_objects=0,
+    max_objects=10,
     counts_rate=params["counts_rate"],
     image_height=tile_dim,
     image_width=tile_dim,
@@ -88,7 +89,7 @@ aggmh = SingleComponentMH(
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
 num_catalogs_per_count = 10000
-num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
+num_catalogs = (prior.max_objects - prior.min_objects + 1) * num_catalogs_per_count
 
 batch_size = 10
 num_batches = num_images // batch_size

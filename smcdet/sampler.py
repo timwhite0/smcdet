@@ -32,10 +32,11 @@ class SMCsampler(object):
         self.MutationKernel.locs_max = self.Prior.loc_prior.high
         self.mutation_acc_rates = None
 
+        self.min_objects = self.Prior.min_objects
         self.max_objects = self.Prior.max_objects
-        self.num_counts = self.max_objects + 1  # num_counts = |{0,1,2,...,max_objects}|
+        self.num_counts = self.max_objects - self.min_objects + 1
         self.count_prior_log_probs = self.Prior.count_prior.log_prob(
-            torch.arange(self.num_counts)
+            torch.arange(self.min_objects, self.max_objects + 1)
         )
         self.num_catalogs_per_count = num_catalogs_per_count
         self.num_catalogs = self.num_counts * self.num_catalogs_per_count

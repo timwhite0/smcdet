@@ -10,8 +10,8 @@ sys.path.append("/home/twhit/smc_object_detection/")
 import numpy as np
 import torch
 
-from smc.images import ImageModel
-from smc.prior import ParetoStarPrior
+from smcdet.images import ImageModel
+from smcdet.prior import ParetoStarPrior
 from utils.misc import select_cuda_device
 
 device = select_cuda_device()

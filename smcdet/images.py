@@ -117,7 +117,7 @@ class M71ImageModel(ImageModel):
         psf_params,
         noise_additive=0,
         noise_multiplicative=1,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
 

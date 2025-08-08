@@ -12,7 +12,7 @@ import pickle
 import torch
 from einops import rearrange
 
-from smc.images import M71ImageModel
+from smcdet.images import M71ImageModel
 from utils.misc import select_cuda_device
 
 device = select_cuda_device()
