@@ -7,7 +7,7 @@ paths:
 
 surveys:
     sdss:
-      _target_: bliss.surveys.sdss.SloanDigitalSkySurvey
+      _target_: experiments.m71.survey_utils.sdss.SloanDigitalSkySurvey
       dir_path: ${paths.sdss}
       fields:
           - run: 6895
