@@ -5,7 +5,7 @@
 
 import sys
 
-sys.path.append("/home/twhit/smc_object_detection/")
+sys.path.append("/home/twhit/smcdet/")
 
 import time
 

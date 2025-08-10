@@ -5,7 +5,7 @@
 
 import sys
 
-sys.path.append("/home/twhit/smc_object_detection/")
+sys.path.append("/home/twhit/smcdet/")
 
 import time
 
@@ -102,7 +102,7 @@ for t in range(thresh.shape[0]):
                 sep_mse[t, m, d, c] = (
                     (pruned_count[t, m, d, c, :] - pruned_counts) ** 2
                 ).mean()
-                print(f"mse = {sep_mse[t,m,d,c]}\n\n")
+                print(f"mse = {sep_mse[t, m, d, c]}\n\n")
 
 for t in range(thresh.shape[0]):
     for m in range(minarea.shape[0]):
