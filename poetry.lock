@@ -411,38 +411,6 @@ jupyter = ["ipython (>=7.8.0)", "tokenize-rt (>=3.2.0)"]
 uvloop = ["uvloop (>=0.15.2)"]
 
 [[package]]
-name = "bliss-toolkit"
-version = "0.3"
-description = "Bayesian Light Source Separator"
-optional = false
-python-versions = ">=3.10,<4.0"
-groups = ["main"]
-markers = "python_version < \"4.0\""
-files = [
-    {file = "bliss_toolkit-0.3-py3-none-any.whl", hash = "sha256:ef5cdcd13fb0d27477dd046a4542bbed445a3afa24c407b58ab8a2713b7eb512"},
-    {file = "bliss_toolkit-0.3.tar.gz", hash = "sha256:1b548be57a7fb48499aa0c922380cdf42f6b3f4d6ad69a582429fc0471f0b22f"},
-]
-
-[package.dependencies]
-astropy = ">=4.2.1"
-bokeh = ">=3.1.1,<4.0.0"
-einops = ">=0.3.0"
-galsim = ">=2.4.10"
-hydra-core = ">=1.0.4"
-matplotlib = ">=3.3.3"
-numpy = ">=1.18.5"
-pytorch-lightning = ">=1.9"
-pyvo = ">=1.4.1,<2.0.0"
-reproject = ">=0.11.0"
-requests = ">=2.31.0,<3.0.0"
-scikit-image = ">=0.20.0"
-scikit-learn = ">=0.24.2"
-scipy = ">=1.4.1"
-torch = ">=1.9"
-torchmetrics = ">=0.5.1"
-yolov5 = ">=7.0.9,<8.0.0"
-
-[[package]]
 name = "bokeh"
 version = "3.7.2"
 description = "Interactive plots and applications in the browser from Python"
@@ -5127,4 +5095,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12"
-content-hash = "c4bbf1fe2c62fb9296ffb368fb7137ef3f455d21e68f702a4c258ea6519d82a1"
+content-hash = "73fe5fe6966944157cfcd31374f334d1ed7b84284be4ede1285468d98eee2679"
