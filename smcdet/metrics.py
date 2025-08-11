@@ -1,7 +1,8 @@
 import torch
-from bliss.catalog import convert_nmgy_to_mag
 from einops import rearrange
 from scipy.optimize import linear_sum_assignment
+
+from utils.sdss import convert_nmgy_to_mag
 
 
 def match_catalogs(
