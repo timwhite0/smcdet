@@ -17,6 +17,7 @@ class Aggregate(object):
         fluxes,
         weights,
         log_normalizing_constant,
+        flux_detection_threshold,
         resample_method,
         ess_threshold_prop,
         print_every=5,
@@ -42,6 +43,8 @@ class Aggregate(object):
             [log_normalizing_constant[h, w].tolist() for w in range(self.numW)]
             for h in range(self.numH)
         ]
+
+        self.flux_detection_threshold = flux_detection_threshold
 
         self.num_catalogs = self.weights.shape[-1]
         self.num_catalogs_per_count = [
@@ -321,19 +324,20 @@ class Aggregate(object):
         return dat, new_counts, new_locs, new_fluxes
 
     def prune(self, locs, fluxes):
-        in_bounds = torch.all(
+        mask = torch.all(
             torch.logical_and(locs > 0, locs < torch.tensor((self.dimH, self.dimW))),
             dim=-1,
         )
+        mask *= fluxes > self.flux_detection_threshold
 
-        counts = in_bounds.sum(-1)
+        counts = mask.sum(-1)
 
-        locs = in_bounds.unsqueeze(-1) * locs
+        locs = mask.unsqueeze(-1) * locs
         locs_mask = (locs != 0).int()
         locs_index = torch.sort(locs_mask, dim=3, descending=True)[1]
         locs = torch.gather(locs, dim=3, index=locs_index)
 
-        fluxes = in_bounds * fluxes
+        fluxes = mask * fluxes
         fluxes_mask = (fluxes != 0).int()
         fluxes_index = torch.sort(fluxes_mask, dim=3, descending=True)[1]
         fluxes = torch.gather(fluxes, dim=3, index=fluxes_index)
