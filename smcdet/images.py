@@ -138,7 +138,14 @@ class M71ImageModel(ImageModel):
         )
 
 
-def generate_images(Prior, ImageModel, flux_threshold, num_images=1):
+def generate_images(
+    Prior,
+    ImageModel,
+    flux_threshold,
+    loc_threshold_lower,
+    loc_threshold_upper,
+    num_images=1,
+):
     catalogs = Prior.sample(num_catalogs=num_images)
     unpruned_counts, unpruned_locs, unpruned_fluxes = catalogs
 
@@ -146,9 +153,8 @@ def generate_images(Prior, ImageModel, flux_threshold, num_images=1):
 
     mask = torch.all(
         torch.logical_and(
-            unpruned_locs > 0,
-            unpruned_locs
-            < torch.tensor((ImageModel.image_height, ImageModel.image_width)),
+            unpruned_locs > loc_threshold_lower,
+            unpruned_locs < torch.tensor((loc_threshold_upper, loc_threshold_upper)),
         ),
         dim=-1,
     )

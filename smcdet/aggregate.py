@@ -611,17 +611,8 @@ class Aggregate(object):
             raise ValueError("aggregation procedure hasn't been run yet.")
 
         print(
-            "summary:\n\nposterior distribution of number of stars including padding:"
+            "posterior distribution of number of detectable stars within image boundary:"
         )
-        print(self.counts.unique(return_counts=True)[0].cpu())
-        print(
-            (self.counts.unique(return_counts=True)[1] / self.counts.shape[-1])
-            .round(decimals=3)
-            .cpu(),
-            "\n",
-        )
-
-        print("posterior distribution of number of stars within image boundary:")
         print(self.pruned_counts.unique(return_counts=True)[0].cpu())
         print(
             (
@@ -634,12 +625,12 @@ class Aggregate(object):
         )
 
         print(
-            "posterior mean total intrinsic flux including padding =",
+            "posterior mean total intrinsic flux (including undetectable and/or in padding) =",
             f"{self.posterior_mean_total_flux(self.fluxes).round().item()}\n",
         )
 
         print(
-            "posterior mean total intrinsic flux within boundary =",
+            "posterior mean total intrinsic flux of detectable stars within image boundary =",
             f"{self.posterior_mean_total_flux(self.pruned_fluxes).round().item()}\n",
         )
 
