@@ -626,12 +626,12 @@ class Aggregate(object):
 
         print(
             "posterior mean total intrinsic flux (including undetectable and/or in padding) =",
-            f"{self.posterior_mean_total_flux(self.fluxes).round().item()}\n",
+            f"{self.posterior_mean_total_flux(self.fluxes).item()}\n",
         )
 
         print(
             "posterior mean total intrinsic flux of detectable stars within image boundary =",
-            f"{self.posterior_mean_total_flux(self.pruned_fluxes).round().item()}\n",
+            f"{self.posterior_mean_total_flux(self.pruned_fluxes).item()}\n",
         )
 
         print(
