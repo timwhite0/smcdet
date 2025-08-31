@@ -71,7 +71,7 @@ imagemodel = M71ImageModel(
 mh = SingleComponentMH(
     num_iters=100,
     locs_stdev=0.1,
-    fluxes_stdev=5,
+    fluxes_stdev=2.5,
     fluxes_min=prior.flux_lower,
     fluxes_max=prior.flux_upper,
 )
@@ -79,7 +79,7 @@ mh = SingleComponentMH(
 aggmh = SingleComponentMH(
     num_iters=100,
     locs_stdev=0.1,
-    fluxes_stdev=5,
+    fluxes_stdev=2.5,
     fluxes_min=prior.flux_lower,
     fluxes_max=prior.flux_upper,
 )
@@ -88,7 +88,7 @@ aggmh = SingleComponentMH(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 20000
+num_catalogs_per_count = 10000
 num_catalogs = (prior.max_objects - prior.min_objects + 1) * num_catalogs_per_count
 
 batch_size = 10
@@ -147,6 +147,7 @@ for b in range(num_batches):
             sampler.fluxes,
             sampler.weights_intercount,
             sampler.log_normalizing_constant,
+            flux_detection_threshold=params["flux_detection_threshold"],
             ess_threshold_prop=0.5,
             resample_method="multinomial",
         )
