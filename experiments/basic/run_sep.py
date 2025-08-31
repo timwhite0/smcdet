@@ -85,10 +85,10 @@ for t in range(thresh.shape[0]):
                     unpruned_count = len(sep_results)
                     locs = torch.zeros(max_detections, 2)
                     locs[:unpruned_count, 0] = (
-                        torch.from_numpy(sep_results["y"]) - padding + 0.5
+                        torch.from_numpy(sep_results["y"].copy()) - padding + 0.5
                     )  # match SMC locs convention
                     locs[:unpruned_count, 1] = (
-                        torch.from_numpy(sep_results["x"]) - padding + 0.5
+                        torch.from_numpy(sep_results["x"].copy()) - padding + 0.5
                     )  # match SMC locs convention
 
                     in_bounds = torch.all(
@@ -151,12 +151,12 @@ for i in range(num_images):
     unpruned_counts[i] = len(sep_results)
     unpruned_count = unpruned_counts[i].int().item()
     unpruned_locs[i, :unpruned_count, 0] = (
-        torch.from_numpy(sep_results["y"]) - padding + 0.5
+        torch.from_numpy(sep_results["y"].copy()) - padding + 0.5
     )  # match SMC locs convention
     unpruned_locs[i, :unpruned_count, 1] = (
-        torch.from_numpy(sep_results["x"]) - padding + 0.5
+        torch.from_numpy(sep_results["x"].copy()) - padding + 0.5
     )  # match SMC locs convention
-    unpruned_fluxes[i, :unpruned_count] = torch.from_numpy(sep_results["flux"])
+    unpruned_fluxes[i, :unpruned_count] = torch.from_numpy(sep_results["flux"].copy())
 
 # remove unnecessary trailing zeros
 unpruned_locs = unpruned_locs[:, : unpruned_counts.max().int().item(), :]
