@@ -46,19 +46,19 @@ tile_dim = 8
 psf_stdev = 0.93
 psf_max = 1 / (2 * np.pi * (psf_stdev**2))
 background = 200
-max_objects = 6
+max_objects = 8
 flux_scale = 5 * np.sqrt(background) / psf_max
 flux_alpha = (-np.log(1 - 0.99)) / (
     np.log(50 * np.sqrt(background) / psf_max) - np.log(flux_scale)
 )
-quantile01_flux = flux_scale * ((1 - 0.1) ** (-1 / flux_alpha))
-pad = np.sqrt(-2 * (psf_stdev**2) * np.log(flux_scale / quantile01_flux))
+pad = 2
 
 prior = ParetoStarPrior(
+    min_objects=max_objects,
     max_objects=max_objects,
     image_height=tile_dim,
     image_width=tile_dim,
-    flux_scale=flux_scale,
+    flux_scale=flux_scale * 0.9,  # detect stars fainter than flux_scale
     flux_alpha=flux_alpha,
     pad=pad,
 )
@@ -72,16 +72,16 @@ imagemodel = ImageModel(
 
 mh = SingleComponentMH(
     num_iters=100,
-    locs_stdev=0.2,
-    fluxes_stdev=200,
+    locs_stdev=0.1,
+    fluxes_stdev=100,
     fluxes_min=prior.flux_scale,
     fluxes_max=1e6,
 )
 
 aggmh = SingleComponentMH(
     num_iters=100,
-    locs_stdev=0.2,
-    fluxes_stdev=200,
+    locs_stdev=0.1,
+    fluxes_stdev=100,
     fluxes_min=prior.flux_scale,
     fluxes_max=1e6,
 )
@@ -90,8 +90,8 @@ aggmh = SingleComponentMH(
 ##############################################
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
-num_catalogs_per_count = 5000
-num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
+num_catalogs_per_count = 10000
+num_catalogs = (prior.max_objects - prior.min_objects + 1) * num_catalogs_per_count
 
 batch_size = 20
 num_batches = num_images // batch_size
@@ -152,6 +152,7 @@ for b in range(num_batches):
             sampler.fluxes,
             sampler.weights_intercount,
             sampler.log_normalizing_constant,
+            flux_detection_threshold=flux_scale,
             ess_threshold_prop=0.5,
             resample_method="multinomial",
         )

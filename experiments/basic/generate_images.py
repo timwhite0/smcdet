@@ -10,7 +10,7 @@ sys.path.append("/home/twhit/smcdet/")
 import numpy as np
 import torch
 
-from smcdet.images import ImageModel
+from smcdet.images import ImageModel, generate_images
 from smcdet.prior import ParetoStarPrior
 from utils.misc import select_cuda_device
 
@@ -36,7 +36,7 @@ imagemodel = ImageModel(
 )
 
 # prior
-max_objects = 6
+max_objects = 8
 # make min flux an approximately 5sigma detection
 flux_scale = 5 * np.sqrt(background) / psf_max
 # choose alpha s.t. 0.99 quantile is an approximately 50sigma detection
@@ -44,16 +44,16 @@ flux_alpha = (-np.log(1 - 0.99)) / (
     np.log(50 * np.sqrt(background) / psf_max) - np.log(flux_scale)
 )
 
-# choose padding s.t. 0.1-quantile-flux star at a distance of pad pixels outside
-# the boundary contributes the same as a min-flux star at the boundary
+# set padding width to 2 pixels
 quantile01_flux = flux_scale * ((1 - 0.1) ** (-1 / flux_alpha))
-pad = np.sqrt(-2 * (psf_stdev**2) * np.log(flux_scale / quantile01_flux))
+pad = 2
 
 prior = ParetoStarPrior(
+    min_objects=0,
     max_objects=max_objects,
     image_height=image_dim,
     image_width=image_dim,
-    flux_scale=flux_scale,
+    flux_scale=flux_scale * 0.9,  # generate stars fainter than detection threshold
     flux_alpha=flux_alpha,
     pad=pad,
 )
@@ -66,6 +66,14 @@ torch.manual_seed(1)
 
 num_images = 2000
 
+res = generate_images(
+    Prior=prior,
+    ImageModel=imagemodel,
+    flux_threshold=flux_scale,
+    loc_threshold_lower=0,
+    loc_threshold_upper=image_dim,
+    num_images=num_images,
+)
 (
     unpruned_counts,
     unpruned_locs,
@@ -74,7 +82,7 @@ num_images = 2000
     pruned_locs,
     pruned_fluxes,
     images,
-) = imagemodel.generate(Prior=prior, num_images=num_images)
+) = res
 
 torch.save(pruned_counts.cpu(), "data/pruned_counts.pt")
 torch.save(pruned_locs.cpu(), "data/pruned_locs.pt")
