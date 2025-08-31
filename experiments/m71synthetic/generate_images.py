@@ -11,7 +11,7 @@ import pickle
 
 import torch
 
-from smcdet.images import M71ImageModel
+from smcdet.images import M71ImageModel, generate_images
 from smcdet.prior import M71Prior
 from utils.misc import select_cuda_device
 
@@ -21,19 +21,22 @@ torch.set_default_device(device)
 ##############################################
 
 ##############################################
-with open("../../m71/manyimages/data/params.pkl", "rb") as f:
+with open("../m71/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 image_dim = 8
-pad = 1
+pad = 4
 
 prior = M71Prior(
+    min_objects=0,
     max_objects=100,
     counts_rate=params["counts_rate"],
     image_height=image_dim,
     image_width=image_dim,
     flux_alpha=params["flux_alpha"],
-    flux_lower=params["flux_lower"],
+    flux_lower=params[
+        "flux_detection_threshold"
+    ],  # counts_rate was fit using only detectable stars
     flux_upper=params["flux_upper"],
     pad=pad,
 )
@@ -54,6 +57,14 @@ torch.manual_seed(0)
 
 num_images = 1000
 
+res = generate_images(
+    Prior=prior,
+    ImageModel=imagemodel,
+    flux_threshold=params["flux_detection_threshold"],
+    loc_threshold_lower=0,
+    loc_threshold_upper=image_dim,
+    num_images=1000,
+)
 (
     unpruned_counts,
     unpruned_locs,
@@ -62,7 +73,7 @@ num_images = 1000
     pruned_locs,
     pruned_fluxes,
     images,
-) = imagemodel.generate(Prior=prior, num_images=num_images)
+) = res
 
 torch.save(pruned_counts.cpu(), "data/pruned_counts.pt")
 torch.save(pruned_locs.cpu(), "data/pruned_locs.pt")
