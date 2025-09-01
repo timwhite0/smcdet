@@ -23,16 +23,12 @@ from smcdet.metrics import compute_precision_recall_f1, match_catalogs
 ##############################################
 # TUNE SEP HYPERPARAMETERS USING F1 ON HELD-OUT TILES
 
-tiles_tune = torch.load("../../m71/manyimages/data/sep/tiles_tune.pt")
-true_counts_tune = torch.load(
-    "../../m71/manyimages/data/sep/pruned_counts_magcut_tune.pt"
-)
-true_fluxes_tune = torch.load(
-    "../../m71/manyimages/data/sep/pruned_fluxes_magcut_tune.pt"
-)
-true_locs_tune = torch.load("../../m71/manyimages/data/sep/pruned_locs_magcut_tune.pt")
+tiles_tune = torch.load("../m71/data/sep/tiles_tune.pt")
+true_counts_tune = torch.load("../m71/data/sep/pruned_counts_magcut_tune.pt")
+true_fluxes_tune = torch.load("../m71/data/sep/pruned_fluxes_magcut_tune.pt")
+true_locs_tune = torch.load("../m71/data/sep/pruned_locs_magcut_tune.pt")
 
-with open("../../m71/manyimages/data/params.pkl", "rb") as f:
+with open("../m71/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 num_images = tiles_tune.shape[0]
@@ -45,7 +41,7 @@ noise_additive = params["noise_additive"]
 noise_multiplicative = params["noise_multiplicative"]
 max_detections = 50
 
-with initialize(config_path="../../m71/manyimages/", version_base=None):
+with initialize(config_path="../m71/", version_base=None):
     cfg = compose(config_name="config")
 
 sdss = instantiate(cfg.surveys.sdss)
@@ -95,13 +91,13 @@ for t in range(thresh.shape[0]):
 
                     counts[i] = len(sep_results)
                     locs[i, : counts[i].int(), 0] = (
-                        torch.from_numpy(sep_results["y"]) + 0.5
+                        torch.from_numpy(sep_results["y"].copy()) + 0.5
                     )  # match SMC locs convention
                     locs[i, : counts[i].int(), 1] = (
-                        torch.from_numpy(sep_results["x"]) + 0.5
+                        torch.from_numpy(sep_results["x"].copy()) + 0.5
                     )  # match SMC locs convention
                     fluxes[i, : counts[i].int()] = (
-                        torch.from_numpy(sep_results["flux"]) / adu_per_nmgy
+                        torch.from_numpy(sep_results["flux"].copy()) / adu_per_nmgy
                     )
 
                 matching_results = match_catalogs(
@@ -175,12 +171,12 @@ for i in range(num_images):
     sep_counts[i] = len(sep_results)
     count = sep_counts[i].int().item()
     sep_locs[i, :count, 0] = (
-        torch.from_numpy(sep_results["y"]) + 0.5
+        torch.from_numpy(sep_results["y"].copy()) + 0.5
     )  # match SMC locs convention
     sep_locs[i, :count, 1] = (
-        torch.from_numpy(sep_results["x"]) + 0.5
+        torch.from_numpy(sep_results["x"].copy()) + 0.5
     )  # match SMC locs convention
-    sep_fluxes[i, :count] = torch.from_numpy(sep_results["flux"]) / adu_per_nmgy
+    sep_fluxes[i, :count] = torch.from_numpy(sep_results["flux"].copy()) / adu_per_nmgy
 
 # remove unnecessary trailing zeros
 sep_locs = sep_locs[:, : sep_counts.max().int().item(), :]

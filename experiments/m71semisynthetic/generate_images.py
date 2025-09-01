@@ -23,18 +23,14 @@ torch.set_default_device(device)
 ##############################################
 # LOAD M71 CATALOGS
 
-m71_unpruned_locs = torch.load("../../m71/manyimages/data/unpruned_locs_magcut.pt").to(
-    device
-)
-m71_unpruned_fluxes = torch.load(
-    "../../m71/manyimages/data/unpruned_fluxes_magcut.pt"
-).to(device)
+m71_unpruned_locs = torch.load("../m71/data/unpruned_locs_magcut.pt").to(device)
+m71_unpruned_fluxes = torch.load("../m71/data/unpruned_fluxes_magcut.pt").to(device)
 
-with open("../../m71/manyimages/data/params.pkl", "rb") as f:
+with open("../m71/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 image_dim = 8
-pad = 1
+pad = 4
 
 imagemodel = M71ImageModel(
     image_height=image_dim,

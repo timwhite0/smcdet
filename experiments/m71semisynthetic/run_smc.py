@@ -28,18 +28,10 @@ torch.set_default_device(device)
 # LOAD IN IMAGES AND CATALOGS
 
 images = torch.load("data/images.pt").to(device)
-unpruned_counts = torch.load("../../m71/manyimages/data/unpruned_counts_magcut.pt").to(
-    device
-)
-pruned_counts = torch.load("../../m71/manyimages/data/pruned_counts_magcut.pt").to(
-    device
-)
-unpruned_fluxes = torch.load("../../m71/manyimages/data/unpruned_fluxes_magcut.pt").to(
-    device
-)
-pruned_fluxes = torch.load("../../m71/manyimages/data/pruned_fluxes_magcut.pt").to(
-    device
-)
+unpruned_counts = torch.load("../m71/data/unpruned_counts_magcut.pt").to(device)
+pruned_counts = torch.load("../m71/data/pruned_counts_magcut.pt").to(device)
+unpruned_fluxes = torch.load("../m71/data/unpruned_fluxes_magcut.pt").to(device)
+pruned_fluxes = torch.load("../m71/data/pruned_fluxes_magcut.pt").to(device)
 
 num_images = images.shape[0]
 image_height = images.shape[1]
@@ -49,14 +41,15 @@ image_width = images.shape[2]
 ##############################################
 # SPECIFY TILE-LEVEL IMAGE MODEL, PRIOR, AND MUTATION KERNEL
 
-with open("../../m71/manyimages/data/params.pkl", "rb") as f:
+with open("../m71/data/params.pkl", "rb") as f:
     params = pickle.load(f)
 
 tile_dim = 8
-pad = 1
+pad = 4
 
 prior = M71Prior(
-    max_objects=6,
+    min_objects=10,
+    max_objects=10,
     counts_rate=params["counts_rate"],
     image_height=tile_dim,
     image_width=tile_dim,
@@ -79,7 +72,7 @@ imagemodel = M71ImageModel(
 mh = SingleComponentMH(
     num_iters=100,
     locs_stdev=0.1,
-    fluxes_stdev=5,
+    fluxes_stdev=2.5,
     fluxes_min=prior.flux_lower,
     fluxes_max=prior.flux_upper,
 )
@@ -87,7 +80,7 @@ mh = SingleComponentMH(
 aggmh = SingleComponentMH(
     num_iters=100,
     locs_stdev=0.1,
-    fluxes_stdev=5,
+    fluxes_stdev=2.5,
     fluxes_min=prior.flux_lower,
     fluxes_max=prior.flux_upper,
 )
@@ -97,7 +90,7 @@ aggmh = SingleComponentMH(
 # SPECIFY NUMBER OF CATALOGS AND BATCH SIZE FOR SAVING RESULTS
 
 num_catalogs_per_count = 10000
-num_catalogs = (prior.max_objects + 1) * num_catalogs_per_count
+num_catalogs = (prior.max_objects - prior.min_objects + 1) * num_catalogs_per_count
 
 batch_size = 20
 num_batches = num_images // batch_size
@@ -158,6 +151,7 @@ for b in range(num_batches):
             sampler.fluxes,
             sampler.weights_intercount,
             sampler.log_normalizing_constant,
+            flux_detection_threshold=params["flux_detection_threshold"],
             ess_threshold_prop=0.5,
             resample_method="multinomial",
         )
