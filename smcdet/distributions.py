@@ -2,6 +2,23 @@ import torch
 from torch.distributions import Distribution, Normal
 
 
+class DiscreteUniform(Distribution):
+    def __init__(self, low, high):
+        self.low = low
+        self.high = high
+        super().__init__(validate_args=False)
+
+    def sample(self, sample_shape=torch.Size()):
+        return torch.randint(self.low, self.high + 1, sample_shape)
+
+    def log_prob(self, value):
+        in_support = (value >= self.low) & (value <= self.high)
+        prob = 1.0 / (self.high - self.low + 1)
+        return torch.where(
+            in_support, torch.log(torch.tensor(prob)), torch.tensor(float("-inf"))
+        )
+
+
 class TruncatedDiagonalMVN(Distribution):
     """A truncated diagonal multivariate normal distribution."""
 

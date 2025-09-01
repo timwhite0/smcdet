@@ -194,7 +194,6 @@ dependencies = [
     "zarr (==2.18.3)",
     "zipp (==3.21.0)",
     "sep (>=1.4.1,<2.0.0)",
-    "bliss-toolkit (>=0.3,<0.4) ; python_version >= \"3.12\" and python_version < \"4.0\""
 ]
 
 

@@ -1,8 +1,8 @@
 # isort: skip_file
 import torch
-from torch.distributions import Categorical, Geometric, Normal, Pareto, Poisson, Uniform
+from torch.distributions import Geometric, Normal, Pareto, Poisson, Uniform
 
-from smcdet.distributions import TruncatedPareto
+from smcdet.distributions import DiscreteUniform, TruncatedPareto
 
 
 class PointProcessPrior(object):
@@ -16,9 +16,7 @@ class PointProcessPrior(object):
 
     def update_attrs(self):
         self.num_counts = self.max_objects - self.min_objects + 1
-        self.count_prior = Categorical(
-            (1 / self.num_counts) * torch.ones(self.num_counts)
-        )
+        self.count_prior = DiscreteUniform(self.min_objects, self.max_objects)
         self.loc_prior = Uniform(
             (0 - self.pad) * torch.ones(2),
             torch.tensor((self.image_height + self.pad, self.image_width + self.pad)),
