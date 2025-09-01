@@ -45,7 +45,6 @@ flux_alpha = (-np.log(1 - 0.99)) / (
 )
 
 # set padding width to 2 pixels
-quantile01_flux = flux_scale * ((1 - 0.1) ** (-1 / flux_alpha))
 pad = 2
 
 prior = ParetoStarPrior(
