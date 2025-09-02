@@ -66,6 +66,7 @@ class M71ImageModel(ImageModel):
         *args,
         adu_per_nmgy,
         psf_params,
+        psf_size,
         noise_additive=0,
         noise_multiplicative=1,
         **kwargs,
@@ -74,12 +75,13 @@ class M71ImageModel(ImageModel):
 
         self.adu_per_nmgy = adu_per_nmgy
         self.sigma1, self.sigma2, self.sigmap, self.beta, self.b, self.p0 = psf_params
+        self.psf_size = psf_size
         self.noise_additive = noise_additive
         self.noise_multiplicative = noise_multiplicative
 
         # compute PSF normalizing constant
-        psf_marginal_h = torch.arange(0, 32 * self.image_height)
-        psf_marginal_w = torch.arange(0, 32 * self.image_width)
+        psf_marginal_h = torch.arange(0, 32 * self.psf_size)
+        psf_marginal_w = torch.arange(0, 32 * self.psf_size)
         grid_h, grid_w = torch.meshgrid(psf_marginal_h, psf_marginal_w, indexing="ij")
         big_psf_grid = torch.stack([grid_h, grid_w], dim=-1)
         one_loc_in_center = torch.tensor(
@@ -99,14 +101,43 @@ class M71ImageModel(ImageModel):
         return (term1 + term2 + term3) / (1 + self.b + self.p0)
 
     def psf(self, locs):
+        dimH, dimW = self.image_height, self.image_width
+        device = locs.device
+        dtype = locs.dtype
+
+        # Create grid of pixel centers for the whole image
+        h_indices = torch.arange(0, dimH, device=device, dtype=dtype) + 0.5  # [dimH]
+        w_indices = torch.arange(0, dimW, device=device, dtype=dtype) + 0.5  # [dimW]
+        pixel_h, pixel_w = torch.meshgrid(
+            h_indices, w_indices, indexing="ij"
+        )  # [dimH, dimW]
+        pixel_coords = torch.stack([pixel_h, pixel_w], dim=-1)  # [dimH, dimW, 2]
+
+        # Broadcast pixel_coords to all stars
+        # locs: [numH, numW, n, d, 2], pixel_coords: [dimH, dimW, 2]
+        # Result: [numH, numW, n, d, dimH, dimW, 2]
+        star_locs = locs[..., None, None, :]  # [numH, numW, n, d, 1, 1, 2]
+        pixel_coords = pixel_coords[
+            None, None, None, None, ...
+        ]  # [1, 1, 1, 1, dimH, dimW, 2]
         psf_grid_adjusted = (
-            self.psf_grid
-            - rearrange(locs, "numH numW n d t -> numH numW n d 1 1 t")
-            + 0.5
-        )
-        unnormalized_psf = self.unnormalized_psf((psf_grid_adjusted**2).sum(-1).sqrt())
-        psf = unnormalized_psf / self.psf_normalizing_constant
-        return rearrange(psf, "numH numW n d dimH dimW -> numH numW dimH dimW n d")
+            pixel_coords - star_locs
+        )  # [numH, numW, n, d, dimH, dimW, 2]
+        r = torch.norm(psf_grid_adjusted, dim=-1)  # [numH, numW, n, d, dimH, dimW]
+
+        # Mask: only include pixels within patch_size of the star center
+        mask = r <= self.psf_size  # [numH, numW, n, d, dimH, dimW]
+
+        # Compute PSF values
+        unnormalized_psf_vals = self.unnormalized_psf(
+            r
+        )  # [numH, numW, n, d, dimH, dimW]
+        psf_vals = unnormalized_psf_vals / self.psf_normalizing_constant
+        psf_vals = psf_vals * mask  # zero out values outside patch
+
+        # Rearrange to output shape [numH, numW, dimH, dimW, n, d]
+        psf_output = psf_vals.permute(0, 1, 4, 5, 2, 3).contiguous()
+        return psf_output
 
     def sample(self, locs, fluxes):
         psf = self.psf(locs)
@@ -122,6 +153,7 @@ class M71ImageModel(ImageModel):
 
     def loglikelihood(self, tiled_image, locs, fluxes):
         psf = self.psf(locs)
+
         rate = (
             psf
             * rearrange(
