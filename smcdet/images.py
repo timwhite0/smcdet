@@ -102,41 +102,25 @@ class M71ImageModel(ImageModel):
 
     def psf(self, locs):
         dimH, dimW = self.image_height, self.image_width
-        device = locs.device
-        dtype = locs.dtype
 
-        # Create grid of pixel centers for the whole image
-        h_indices = torch.arange(0, dimH, device=device, dtype=dtype) + 0.5  # [dimH]
-        w_indices = torch.arange(0, dimW, device=device, dtype=dtype) + 0.5  # [dimW]
-        pixel_h, pixel_w = torch.meshgrid(
-            h_indices, w_indices, indexing="ij"
-        )  # [dimH, dimW]
-        pixel_coords = torch.stack([pixel_h, pixel_w], dim=-1)  # [dimH, dimW, 2]
+        h_indices = torch.arange(0, dimH) + 0.5
+        w_indices = torch.arange(0, dimW) + 0.5
+        pixel_h, pixel_w = torch.meshgrid(h_indices, w_indices, indexing="ij")
+        pixel_coords = torch.stack([pixel_h, pixel_w], dim=-1)
 
-        # Broadcast pixel_coords to all stars
-        # locs: [numH, numW, n, d, 2], pixel_coords: [dimH, dimW, 2]
-        # Result: [numH, numW, n, d, dimH, dimW, 2]
-        star_locs = locs[..., None, None, :]  # [numH, numW, n, d, 1, 1, 2]
-        pixel_coords = pixel_coords[
-            None, None, None, None, ...
-        ]  # [1, 1, 1, 1, dimH, dimW, 2]
-        psf_grid_adjusted = (
-            pixel_coords - star_locs
-        )  # [numH, numW, n, d, dimH, dimW, 2]
-        r = torch.norm(psf_grid_adjusted, dim=-1)  # [numH, numW, n, d, dimH, dimW]
+        star_locs = locs[..., None, None, :]
+        pixel_coords = pixel_coords[None, None, None, None, ...]
+        psf_grid_adjusted = pixel_coords - star_locs
+        r = torch.norm(psf_grid_adjusted, dim=-1)
 
-        # Mask: only include pixels within patch_size of the star center
-        mask = r <= self.psf_size  # [numH, numW, n, d, dimH, dimW]
+        mask = r <= self.psf_size
 
-        # Compute PSF values
-        unnormalized_psf_vals = self.unnormalized_psf(
-            r
-        )  # [numH, numW, n, d, dimH, dimW]
+        unnormalized_psf_vals = self.unnormalized_psf(r)
         psf_vals = unnormalized_psf_vals / self.psf_normalizing_constant
-        psf_vals = psf_vals * mask  # zero out values outside patch
+        psf_vals = psf_vals * mask
 
-        # Rearrange to output shape [numH, numW, dimH, dimW, n, d]
         psf_output = psf_vals.permute(0, 1, 4, 5, 2, 3).contiguous()
+
         return psf_output
 
     def sample(self, locs, fluxes):
