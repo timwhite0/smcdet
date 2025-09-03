@@ -66,7 +66,7 @@ class M71ImageModel(ImageModel):
         *args,
         adu_per_nmgy,
         psf_params,
-        psf_size: int,
+        psf_radius: int,
         noise_additive=0,
         noise_multiplicative=1,
         **kwargs,
@@ -75,13 +75,13 @@ class M71ImageModel(ImageModel):
 
         self.adu_per_nmgy = adu_per_nmgy
         self.sigma1, self.sigma2, self.sigmap, self.beta, self.b, self.p0 = psf_params
-        self.psf_size = psf_size
+        self.psf_radius = psf_radius
         self.noise_additive = noise_additive
         self.noise_multiplicative = noise_multiplicative
 
         # compute PSF normalizing constant
-        psf_marginal_h = torch.arange(0, 32 * self.psf_size)
-        psf_marginal_w = torch.arange(0, 32 * self.psf_size)
+        psf_marginal_h = torch.arange(0, 32 * self.psf_radius)
+        psf_marginal_w = torch.arange(0, 32 * self.psf_radius)
         grid_h, grid_w = torch.meshgrid(psf_marginal_h, psf_marginal_w, indexing="ij")
         big_psf_grid = torch.stack([grid_h, grid_w], dim=-1)
         one_loc_in_center = torch.tensor(
@@ -94,13 +94,10 @@ class M71ImageModel(ImageModel):
             (psf_grid_adjusted**2).sum(-1).sqrt()
         ).sum()
 
-        self.window_size = 2 * self.psf_size + 1
-        h_offsets = torch.arange(-self.psf_size, self.psf_size + 1)
-        w_offsets = torch.arange(-self.psf_size, self.psf_size + 1)
-        h_grid, w_grid = torch.meshgrid(h_offsets, w_offsets, indexing="ij")
-        self.offset_grid = torch.stack(
-            [h_grid, w_grid], dim=-1
-        )  # [window_size, window_size, 2]
+        self.window_size = 2 * self.psf_radius + 1
+        offsets = torch.arange(-self.psf_radius, self.psf_radius + 1)
+        h_grid, w_grid = torch.meshgrid(offsets, offsets, indexing="ij")
+        self.offset_grid = torch.stack([h_grid, w_grid], dim=-1)
 
     def unnormalized_psf(self, r):
         term1 = torch.exp(-(r**2) / (2 * self.sigma1))
@@ -109,17 +106,40 @@ class M71ImageModel(ImageModel):
         return (term1 + term2 + term3) / (1 + self.b + self.p0)
 
     def psf(self, locs):
-        pixel_coords = torch.floor(locs[..., None, None, :]) + self.offset_grid + 0.5
+        # locs shape: [numH, numW, n, d, 2]
+        # Assuming numH = numW = 1
+        numH, numW, n, d, _ = locs.shape
 
-        r = torch.norm(pixel_coords - locs[..., None, None, :], dim=-1)
+        # Remove singleton dimensions: [n, d, 2]
+        locs_squeezed = locs.squeeze(0).squeeze(0)
 
-        mask = r <= self.psf_size
+        # Star centers (continuous): [n, d, 2] - keep these continuous!
+        star_centers = locs_squeezed
+
+        # Integer pixel coordinates for each star's window: [n, d, window_size, window_size, 2]
+        # Use floor of star center as anchor point, then add offsets
+        pixel_coords = torch.floor(
+            rearrange(star_centers, "n d t -> n d 1 1 t")
+        ) + rearrange(self.offset_grid, "h w t -> 1 1 h w t")
+
+        # Calculate PSF values: distance from continuous star center to integer pixel centers
+        # Pixel centers are at integer coordinates + 0.5
+        pixel_centers = pixel_coords + 0.5  # [n, d, window_size, window_size, 2]
+
+        # Distance from continuous star center to each pixel center
+        r = torch.norm(
+            pixel_centers - rearrange(star_centers, "n d t -> n d 1 1 t"), dim=-1
+        )  # [n, d, window_size, window_size]
+
+        # Apply PSF computation
+        mask = r <= self.psf_radius
         unnormalized_psf_vals = self.unnormalized_psf(r)
         local_psf_values = (
             unnormalized_psf_vals / self.psf_normalizing_constant
         ) * mask
 
-        pixel_coords_int = pixel_coords.long()
+        # Determine which pixels are within image bounds
+        pixel_coords_int = pixel_coords.long()  # [n, d, window_size, window_size, 2]
         h_valid = (pixel_coords_int[..., 0] >= 0) & (
             pixel_coords_int[..., 0] < self.image_height
         )
@@ -128,28 +148,37 @@ class M71ImageModel(ImageModel):
         )
         valid_mask = h_valid & w_valid & mask
 
-        psf_output = torch.zeros(
-            locs.shape[0],
-            locs.shape[1],
-            self.image_height,
-            self.image_width,
-            locs.shape[2],
-            locs.shape[3],
-        )
+        # Initialize output
+        psf_output = torch.zeros(numH, numW, self.image_height, self.image_width, n, d)
 
+        # Scatter operation
         if valid_mask.any():
-            valid_positions = valid_mask.nonzero(as_tuple=False)  # [num_valid, 6]
+            valid_positions = valid_mask.nonzero(as_tuple=False)  # [num_valid, 4]
             valid_psf_vals = local_psf_values[valid_mask]
-            h_idx = valid_positions[:, 0]
-            w_idx = valid_positions[:, 1]
-            n_idx = valid_positions[:, 2]
-            d_idx = valid_positions[:, 3]
-            h_local = valid_positions[:, 4]
-            w_local = valid_positions[:, 5]
-            target_h = pixel_coords_int[h_idx, w_idx, n_idx, d_idx, h_local, w_local, 0]
-            target_w = pixel_coords_int[h_idx, w_idx, n_idx, d_idx, h_local, w_local, 1]
 
-            psf_output[h_idx, w_idx, target_h, target_w, n_idx, d_idx] = valid_psf_vals
+            # Extract coordinates
+            n_idx = valid_positions[:, 0]
+            d_idx = valid_positions[:, 1]
+            h_local = valid_positions[:, 2]
+            w_local = valid_positions[:, 3]
+
+            # Get target image coordinates
+            target_h = pixel_coords_int[n_idx, d_idx, h_local, w_local, 0]
+            target_w = pixel_coords_int[n_idx, d_idx, h_local, w_local, 1]
+
+            # Linear indexing for scatter (corrected for numH=numW=1)
+            linear_indices = (
+                target_h * self.image_width * n * d
+                + target_w * n * d
+                + n_idx * d
+                + d_idx
+            )
+
+            psf_flat = psf_output.view(-1)
+            psf_flat.scatter_add_(0, linear_indices, valid_psf_vals)
+            psf_output = psf_flat.view(
+                numH, numW, self.image_height, self.image_width, n, d
+            )
 
         return psf_output
 
