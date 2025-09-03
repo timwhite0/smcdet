@@ -101,27 +101,21 @@ class M71ImageModel(ImageModel):
         return (term1 + term2 + term3) / (1 + self.b + self.p0)
 
     def psf(self, locs):
-        dimH, dimW = self.image_height, self.image_width
-
-        h_indices = torch.arange(0, dimH) + 0.5
-        w_indices = torch.arange(0, dimW) + 0.5
-        pixel_h, pixel_w = torch.meshgrid(h_indices, w_indices, indexing="ij")
-        pixel_coords = torch.stack([pixel_h, pixel_w], dim=-1)
-
-        star_locs = locs[..., None, None, :]
-        pixel_coords = pixel_coords[None, None, None, None, ...]
-        psf_grid_adjusted = pixel_coords - star_locs
+        psf_grid_adjusted = (
+            self.psf_grid
+            + 0.5
+            - rearrange(locs, "numH numW n d t -> numH numW n d 1 1 t")
+        )
         r = torch.norm(psf_grid_adjusted, dim=-1)
 
         mask = r <= self.psf_size
 
         unnormalized_psf_vals = self.unnormalized_psf(r)
-        psf_vals = unnormalized_psf_vals / self.psf_normalizing_constant
-        psf_vals = psf_vals * mask
+        psf = unnormalized_psf_vals / self.psf_normalizing_constant
 
-        psf_output = psf_vals.permute(0, 1, 4, 5, 2, 3).contiguous()
-
-        return psf_output
+        return rearrange(
+            psf * mask, "numH numW n d dimH dimW -> numH numW dimH dimW n d"
+        )
 
     def sample(self, locs, fluxes):
         psf = self.psf(locs)
