@@ -111,24 +111,17 @@ class M71ImageModel(ImageModel):
         numH, numW, n, d, _ = locs.shape
 
         # Remove singleton dimensions: [n, d, 2]
-        locs_squeezed = locs.squeeze(0).squeeze(0)
-
-        # Star centers (continuous): [n, d, 2] - keep these continuous!
-        star_centers = locs_squeezed
+        star_centers = rearrange(locs.squeeze(0).squeeze(0), "n d t -> n d 1 1 t")
 
         # Integer pixel coordinates for each star's window: [n, d, window_size, window_size, 2]
         # Use floor of star center as anchor point, then add offsets
-        pixel_coords = torch.floor(
-            rearrange(star_centers, "n d t -> n d 1 1 t")
-        ) + rearrange(self.offset_grid, "h w t -> 1 1 h w t")
-
-        # Calculate PSF values: distance from continuous star center to integer pixel centers
-        # Pixel centers are at integer coordinates + 0.5
-        pixel_centers = pixel_coords + 0.5  # [n, d, window_size, window_size, 2]
+        pixel_coords = torch.floor(star_centers) + rearrange(
+            self.offset_grid, "h w t -> 1 1 h w t"
+        )
 
         # Distance from continuous star center to each pixel center
         r = torch.norm(
-            pixel_centers - rearrange(star_centers, "n d t -> n d 1 1 t"), dim=-1
+            (pixel_coords + 0.5) - star_centers, dim=-1
         )  # [n, d, window_size, window_size]
 
         # Apply PSF computation
@@ -148,12 +141,9 @@ class M71ImageModel(ImageModel):
         )
         valid_mask = h_valid & w_valid & mask
 
-        # Initialize output
-        psf_output = torch.zeros(numH, numW, self.image_height, self.image_width, n, d)
-
         # Scatter operation
         if valid_mask.any():
-            valid_positions = valid_mask.nonzero(as_tuple=False)  # [num_valid, 4]
+            valid_positions = valid_mask.nonzero(as_tuple=False)
             valid_psf_vals = local_psf_values[valid_mask]
 
             # Extract coordinates
@@ -174,7 +164,9 @@ class M71ImageModel(ImageModel):
                 + d_idx
             )
 
-            psf_flat = psf_output.view(-1)
+            psf_flat = torch.zeros(
+                numH * numW * self.image_height * self.image_width * n * d
+            )
             psf_flat.scatter_add_(0, linear_indices, valid_psf_vals)
             psf_output = psf_flat.view(
                 numH, numW, self.image_height, self.image_width, n, d
