@@ -108,33 +108,23 @@ class M71ImageModel(ImageModel):
         return (term1 + term2 + term3) / (1 + self.b + self.p0)
 
     def psf(self, locs):
-        # locs shape: [numH, numW, n, d, 2]
-        # Assuming numH = numW = 1
         numH, numW, n, d, _ = locs.shape
 
-        # Remove singleton dimensions: [n, d, 2]
-        star_centers = rearrange(locs.squeeze(0).squeeze(0), "n d t -> n d 1 1 t")
+        star_centers = rearrange(locs, "numH numW n d t -> numH numW n d 1 1 t")
 
-        # Integer pixel coordinates for each star's patch: [n, d, patch_size, patch_size, 2]
-        # Use floor of star center as anchor point, then add offsets
         pixel_coords = torch.floor(star_centers) + rearrange(
-            self.psf_patch, "h w t -> 1 1 h w t"
+            self.psf_patch, "dimH dimW t -> 1 1 1 1 dimH dimW t"
         )
 
-        # Distance from continuous star center to each pixel center
-        r = torch.norm(
-            (pixel_coords + 0.5) - star_centers, dim=-1
-        )  # [n, d, patch_size, patch_size]
+        r = torch.norm((pixel_coords + 0.5) - star_centers, dim=-1)
 
-        # Apply PSF computation
         mask = r <= self.psf_radius
         unnormalized_psf_vals = self.unnormalized_psf(r)
         local_psf_values = (
             unnormalized_psf_vals / self.psf_normalizing_constant
         ) * mask
 
-        # Determine which pixels are within image bounds
-        pixel_coords_int = pixel_coords.long()  # [n, d, patch_size, patch_size, 2]
+        pixel_coords_int = pixel_coords.long()
         h_valid = (pixel_coords_int[..., 0] >= 0) & (
             pixel_coords_int[..., 0] < self.image_height
         )
@@ -143,24 +133,28 @@ class M71ImageModel(ImageModel):
         )
         valid_mask = h_valid & w_valid & mask
 
-        # Scatter operation
         if valid_mask.any():
             valid_positions = valid_mask.nonzero(as_tuple=False)
             valid_psf_vals = local_psf_values[valid_mask]
 
-            # Extract coordinates
-            n_idx = valid_positions[:, 0]
-            d_idx = valid_positions[:, 1]
-            h_local = valid_positions[:, 2]
-            w_local = valid_positions[:, 3]
+            h_tile = valid_positions[:, 0]
+            w_tile = valid_positions[:, 1]
+            n_idx = valid_positions[:, 2]
+            d_idx = valid_positions[:, 3]
+            h_patch = valid_positions[:, 4]
+            w_patch = valid_positions[:, 5]
 
-            # Get target image coordinates
-            target_h = pixel_coords_int[n_idx, d_idx, h_local, w_local, 0]
-            target_w = pixel_coords_int[n_idx, d_idx, h_local, w_local, 1]
+            target_h = pixel_coords_int[
+                h_tile, w_tile, n_idx, d_idx, h_patch, w_patch, 0
+            ]
+            target_w = pixel_coords_int[
+                h_tile, w_tile, n_idx, d_idx, h_patch, w_patch, 1
+            ]
 
-            # Linear indexing for scatter (corrected for numH=numW=1)
             linear_indices = (
-                target_h * self.image_width * n * d
+                h_tile * numW * self.image_height * self.image_width * n * d
+                + w_tile * self.image_height * self.image_width * n * d
+                + target_h * self.image_width * n * d
                 + target_w * n * d
                 + n_idx * d
                 + d_idx
@@ -170,11 +164,8 @@ class M71ImageModel(ImageModel):
                 numH * numW * self.image_height * self.image_width * n * d
             )
             psf_flat.scatter_add_(0, linear_indices, valid_psf_vals)
-            psf_output = psf_flat.view(
-                numH, numW, self.image_height, self.image_width, n, d
-            )
 
-        return psf_output
+        return psf_flat.view(numH, numW, self.image_height, self.image_width, n, d)
 
     def sample(self, locs, fluxes):
         psf = self.psf(locs)
