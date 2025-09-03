@@ -94,10 +94,12 @@ class M71ImageModel(ImageModel):
             (psf_grid_adjusted**2).sum(-1).sqrt()
         ).sum()
 
-        self.window_size = 2 * self.psf_radius + 1
-        offsets = torch.arange(-self.psf_radius, self.psf_radius + 1)
-        h_grid, w_grid = torch.meshgrid(offsets, offsets, indexing="ij")
-        self.offset_grid = torch.stack([h_grid, w_grid], dim=-1)
+        # create PSF patch (w.r.t. star center)
+        psf_patch_seq = torch.arange(-self.psf_radius, self.psf_radius + 1)
+        psf_patch_h, psf_patch_w = torch.meshgrid(
+            psf_patch_seq, psf_patch_seq, indexing="ij"
+        )
+        self.psf_patch = torch.stack([psf_patch_h, psf_patch_w], dim=-1)
 
     def unnormalized_psf(self, r):
         term1 = torch.exp(-(r**2) / (2 * self.sigma1))
@@ -113,16 +115,16 @@ class M71ImageModel(ImageModel):
         # Remove singleton dimensions: [n, d, 2]
         star_centers = rearrange(locs.squeeze(0).squeeze(0), "n d t -> n d 1 1 t")
 
-        # Integer pixel coordinates for each star's window: [n, d, window_size, window_size, 2]
+        # Integer pixel coordinates for each star's patch: [n, d, patch_size, patch_size, 2]
         # Use floor of star center as anchor point, then add offsets
         pixel_coords = torch.floor(star_centers) + rearrange(
-            self.offset_grid, "h w t -> 1 1 h w t"
+            self.psf_patch, "h w t -> 1 1 h w t"
         )
 
         # Distance from continuous star center to each pixel center
         r = torch.norm(
             (pixel_coords + 0.5) - star_centers, dim=-1
-        )  # [n, d, window_size, window_size]
+        )  # [n, d, patch_size, patch_size]
 
         # Apply PSF computation
         mask = r <= self.psf_radius
@@ -132,7 +134,7 @@ class M71ImageModel(ImageModel):
         ) * mask
 
         # Determine which pixels are within image bounds
-        pixel_coords_int = pixel_coords.long()  # [n, d, window_size, window_size, 2]
+        pixel_coords_int = pixel_coords.long()  # [n, d, patch_size, patch_size, 2]
         h_valid = (pixel_coords_int[..., 0] >= 0) & (
             pixel_coords_int[..., 0] < self.image_height
         )
