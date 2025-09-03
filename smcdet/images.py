@@ -66,7 +66,7 @@ class M71ImageModel(ImageModel):
         *args,
         adu_per_nmgy,
         psf_params,
-        psf_size,
+        psf_size: int,
         noise_additive=0,
         noise_multiplicative=1,
         **kwargs,
@@ -94,6 +94,14 @@ class M71ImageModel(ImageModel):
             (psf_grid_adjusted**2).sum(-1).sqrt()
         ).sum()
 
+        self.window_size = 2 * self.psf_size + 1
+        h_offsets = torch.arange(-self.psf_size, self.psf_size + 1)
+        w_offsets = torch.arange(-self.psf_size, self.psf_size + 1)
+        h_grid, w_grid = torch.meshgrid(h_offsets, w_offsets, indexing="ij")
+        self.offset_grid = torch.stack(
+            [h_grid, w_grid], dim=-1
+        )  # [window_size, window_size, 2]
+
     def unnormalized_psf(self, r):
         term1 = torch.exp(-(r**2) / (2 * self.sigma1))
         term2 = self.b * torch.exp(-(r**2) / (2 * self.sigma2))
@@ -101,21 +109,49 @@ class M71ImageModel(ImageModel):
         return (term1 + term2 + term3) / (1 + self.b + self.p0)
 
     def psf(self, locs):
-        psf_grid_adjusted = (
-            self.psf_grid
-            + 0.5
-            - rearrange(locs, "numH numW n d t -> numH numW n d 1 1 t")
-        )
-        r = torch.norm(psf_grid_adjusted, dim=-1)
+        pixel_coords = torch.floor(locs[..., None, None, :]) + self.offset_grid + 0.5
+
+        r = torch.norm(pixel_coords - locs[..., None, None, :], dim=-1)
 
         mask = r <= self.psf_size
-
         unnormalized_psf_vals = self.unnormalized_psf(r)
-        psf = unnormalized_psf_vals / self.psf_normalizing_constant
+        local_psf_values = (
+            unnormalized_psf_vals / self.psf_normalizing_constant
+        ) * mask
 
-        return rearrange(
-            psf * mask, "numH numW n d dimH dimW -> numH numW dimH dimW n d"
+        pixel_coords_int = pixel_coords.long()
+        h_valid = (pixel_coords_int[..., 0] >= 0) & (
+            pixel_coords_int[..., 0] < self.image_height
         )
+        w_valid = (pixel_coords_int[..., 1] >= 0) & (
+            pixel_coords_int[..., 1] < self.image_width
+        )
+        valid_mask = h_valid & w_valid & mask
+
+        psf_output = torch.zeros(
+            locs.shape[0],
+            locs.shape[1],
+            self.image_height,
+            self.image_width,
+            locs.shape[2],
+            locs.shape[3],
+        )
+
+        if valid_mask.any():
+            valid_positions = valid_mask.nonzero(as_tuple=False)  # [num_valid, 6]
+            valid_psf_vals = local_psf_values[valid_mask]
+            h_idx = valid_positions[:, 0]
+            w_idx = valid_positions[:, 1]
+            n_idx = valid_positions[:, 2]
+            d_idx = valid_positions[:, 3]
+            h_local = valid_positions[:, 4]
+            w_local = valid_positions[:, 5]
+            target_h = pixel_coords_int[h_idx, w_idx, n_idx, d_idx, h_local, w_local, 0]
+            target_w = pixel_coords_int[h_idx, w_idx, n_idx, d_idx, h_local, w_local, 1]
+
+            psf_output[h_idx, w_idx, target_h, target_w, n_idx, d_idx] = valid_psf_vals
+
+        return psf_output
 
     def sample(self, locs, fluxes):
         psf = self.psf(locs)
