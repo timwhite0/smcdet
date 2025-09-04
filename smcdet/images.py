@@ -134,15 +134,8 @@ class M71ImageModel(ImageModel):
         valid_mask = h_valid & w_valid & mask
 
         if valid_mask.any():
-            valid_positions = valid_mask.nonzero(as_tuple=False)
+            h_tile, w_tile, n_idx, d_idx, h_patch, w_patch = torch.where(valid_mask)
             valid_psf_vals = local_psf_values[valid_mask]
-
-            h_tile = valid_positions[:, 0]
-            w_tile = valid_positions[:, 1]
-            n_idx = valid_positions[:, 2]
-            d_idx = valid_positions[:, 3]
-            h_patch = valid_positions[:, 4]
-            w_patch = valid_positions[:, 5]
 
             target_h = pixel_coords_int[
                 h_tile, w_tile, n_idx, d_idx, h_patch, w_patch, 0
