@@ -116,27 +116,27 @@ class M71ImageModel(ImageModel):
             self.psf_patch, "dimH dimW t -> 1 1 1 1 dimH dimW t"
         )
 
+        h_in_bounds = (pixel_coords[..., 0] >= 0) & (
+            pixel_coords[..., 0] < self.image_height
+        )
+        w_in_bounds = (pixel_coords[..., 1] >= 0) & (
+            pixel_coords[..., 1] < self.image_width
+        )
+        coords_in_bounds = h_in_bounds & w_in_bounds
+
         r = torch.norm((pixel_coords + 0.5) - star_centers, dim=-1)
+        radius_mask = r <= self.psf_radius
 
-        mask = r <= self.psf_radius
-        unnormalized_psf_vals = self.unnormalized_psf(r)
-        local_psf_values = (
-            unnormalized_psf_vals / self.psf_normalizing_constant
-        ) * mask
-
-        pixel_coords_int = pixel_coords.long()
-        h_valid = (pixel_coords_int[..., 0] >= 0) & (
-            pixel_coords_int[..., 0] < self.image_height
-        )
-        w_valid = (pixel_coords_int[..., 1] >= 0) & (
-            pixel_coords_int[..., 1] < self.image_width
-        )
-        valid_mask = h_valid & w_valid & mask
+        valid_mask = coords_in_bounds & radius_mask
 
         if valid_mask.any():
             h_tile, w_tile, n_idx, d_idx, h_patch, w_patch = torch.where(valid_mask)
-            valid_psf_vals = local_psf_values[valid_mask]
+            valid_r = r[valid_mask]
+            valid_psf_vals = (
+                self.unnormalized_psf(valid_r) / self.psf_normalizing_constant
+            )
 
+            pixel_coords_int = pixel_coords.long()
             target_h = pixel_coords_int[
                 h_tile, w_tile, n_idx, d_idx, h_patch, w_patch, 0
             ]
