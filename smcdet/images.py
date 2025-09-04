@@ -125,13 +125,12 @@ class M71ImageModel(ImageModel):
         coords_in_bounds = h_in_bounds & w_in_bounds
 
         r = torch.norm((pixel_coords + 0.5) - star_centers, dim=-1)
-        radius_mask = r <= self.psf_radius
 
-        valid_mask = coords_in_bounds & radius_mask
-
-        if valid_mask.any():
-            h_tile, w_tile, n_idx, d_idx, h_patch, w_patch = torch.where(valid_mask)
-            valid_r = r[valid_mask]
+        if coords_in_bounds.any():
+            h_tile, w_tile, n_idx, d_idx, h_patch, w_patch = torch.where(
+                coords_in_bounds
+            )
+            valid_r = r[coords_in_bounds]
             valid_psf_vals = (
                 self.unnormalized_psf(valid_r) / self.psf_normalizing_constant
             )
