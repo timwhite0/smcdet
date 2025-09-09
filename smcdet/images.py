@@ -1,6 +1,6 @@
 import torch
 from einops import rearrange
-from torch.distributions import Independent, Normal, Poisson
+from torch.distributions import Normal, Poisson
 
 
 class ImageModel(object):
@@ -14,9 +14,7 @@ class ImageModel(object):
         self.psf_stdev = psf_stdev
 
         if self.psf_stdev is not None:
-            self.psf_density = Independent(
-                Normal(torch.zeros(1), self.psf_stdev * torch.ones(1)), 1
-            )
+            self.psf_density = Normal(torch.zeros(1), self.psf_stdev * torch.ones(1))
 
         psf_patch_seq = torch.arange(-self.psf_radius, self.psf_radius + 1)
         psf_patch_h, psf_patch_w = torch.meshgrid(
