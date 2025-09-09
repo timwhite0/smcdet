@@ -38,6 +38,7 @@ imagemodel = M71ImageModel(
     background=params["background"],
     adu_per_nmgy=params["adu_per_nmgy"],
     psf_params=params["psf_params"],
+    psf_radius=params["psf_radius"],
     noise_additive=params["noise_additive"],
     noise_multiplicative=params["noise_multiplicative"],
 )
