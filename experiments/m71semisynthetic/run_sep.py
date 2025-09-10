@@ -13,8 +13,6 @@ import time
 import numpy as np
 import sep
 import torch
-from hydra import compose, initialize
-from hydra.utils import instantiate
 
 from smcdet.metrics import compute_precision_recall_f1, match_catalogs
 
@@ -36,18 +34,7 @@ image_height = tiles_tune.shape[1]
 image_width = tiles_tune.shape[2]
 background = params["background"]
 adu_per_nmgy = params["adu_per_nmgy"]
-psf_params = params["psf_params"]
-noise_additive = params["noise_additive"]
-noise_multiplicative = params["noise_multiplicative"]
 max_detections = 50
-
-with initialize(config_path="../m71/", version_base=None):
-    cfg = compose(config_name="config")
-
-sdss = instantiate(cfg.surveys.sdss)
-sdss.prepare_data()
-# trim SDSS PSF to 5x5
-sdss_psf = sdss.psf.psf_galsim[sdss.image_id(0)][2].original.image.array[10:15, 10:15]
 
 mag_bins = torch.arange(14.0, 22.5, 8)  # we'll compute F1 for the bin [14.0, 22.5)
 

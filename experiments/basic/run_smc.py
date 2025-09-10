@@ -43,6 +43,7 @@ image_width = images.shape[2]
 
 tile_dim = 8
 
+psf_radius = 8
 psf_stdev = 0.93
 psf_max = 1 / (2 * np.pi * (psf_stdev**2))
 background = 200
@@ -66,6 +67,7 @@ prior = ParetoStarPrior(
 imagemodel = ImageModel(
     image_height=tile_dim,
     image_width=tile_dim,
+    psf_radius=psf_radius,
     psf_stdev=psf_stdev,
     background=background,
 )

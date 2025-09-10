@@ -24,6 +24,7 @@ torch.set_default_device(device)
 
 # image attributes
 image_dim = 8
+psf_radius = 8
 psf_stdev = 0.93  # FWHM of SDSS PSF is 2.2
 psf_max = 1 / (2 * np.pi * (psf_stdev**2))
 background = 200  # arbitrary fixed background
@@ -31,6 +32,7 @@ background = 200  # arbitrary fixed background
 imagemodel = ImageModel(
     image_height=image_dim,
     image_width=image_dim,
+    psf_radius=psf_radius,
     psf_stdev=psf_stdev,
     background=background,
 )
@@ -63,7 +65,7 @@ prior = ParetoStarPrior(
 
 torch.manual_seed(1)
 
-num_images = 2000
+num_images = 1000
 
 res = generate_images(
     Prior=prior,
