@@ -118,13 +118,29 @@ class SMCsampler(object):
         self.temperature = self.temperature + delta
 
     def resample(self):
-        resampled_index_flat = self.weights.flatten(0, 1).multinomial(
-            self.num_catalogs, replacement=True
-        )
-        resampled_index = resampled_index_flat.unflatten(
-            0, (self.num_tiles_per_side, self.num_tiles_per_side)
-        ).clamp(min=0, max=self.num_catalogs - 1)
+        if self.resample_method == "multinomial":
+            resampled_index_flat = self.weights.flatten(0, 1).multinomial(
+                self.num_catalogs, replacement=True
+            )
+            resampled_index = resampled_index_flat.unflatten(
+                0, (self.num_tiles_per_side, self.num_tiles_per_side)
+            )
+        elif self.resample_method == "systematic":
+            resampled_index = torch.zeros_like(self.weights, dtype=torch.int64)
+            seq = repeat(
+                torch.arange(self.num_catalogs),
+                "n -> numH numW n",
+                numH=self.num_tiles_per_side,
+                numW=self.num_tiles_per_side,
+            )
+            rand = torch.rand([self.num_tiles_per_side, self.num_tiles_per_side])
+            u = (seq + rand) / self.num_catalogs
+            bins = self.weights.cumsum(-1)
+            for h in range(self.num_tiles_per_side):
+                for w in range(self.num_tiles_per_side):
+                    resampled_index[h, w] = torch.bucketize(u[h, w], bins[h, w])
 
+        resampled_index = resampled_index.clamp(min=0, max=self.num_catalogs - 1)
         self.counts = torch.gather(self.counts, -1, resampled_index)
         self.fluxes = torch.gather(
             self.fluxes,
@@ -144,20 +160,6 @@ class SMCsampler(object):
             ),
         )
         self.weights = 1 / self.num_catalogs
-
-        # elif self.resample_method == "systematic":
-        #     resampled_index = torch.zeros_like(weights)
-        #     for h in range(self.num_tiles_per_side):
-        #         for w in range(self.num_tiles_per_side):
-        #             u = (
-        #                 torch.arange(self.num_catalogs_per_count) + torch.rand([1])
-        #             ) / self.num_catalogs_per_count
-        #             bins = weights[h, w].cumsum(0)
-        #             resampled_index[h, w] = torch.bucketize(u, bins)
-
-        # resampled_index = resampled_index.int().clamp(
-        #     min=0, max=self.num_catalogs_per_count - 1
-        # )
 
     def mutate(self):
         self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
