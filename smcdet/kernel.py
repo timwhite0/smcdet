@@ -31,15 +31,9 @@ class SingleComponentMH(object):
         fluxes,
         temperature,
         log_target,
-        unjoin=None,
-        axis=None,
-        ChildImageModel=None,
     ):
-        counts_mask = torch.arange(1, locs.shape[-2] + 1).unsqueeze(
-            0
-        ) <= counts.unsqueeze(3)
         component_multinom = Multinomial(
-            total_count=1, probs=1 / locs.shape[-2] * counts_mask + 1e-8
+            total_count=1, probs=1 / fluxes.shape[-1] * torch.ones_like(fluxes)
         )
 
         locs_prev = locs
@@ -47,7 +41,7 @@ class SingleComponentMH(object):
 
         for iter in range(self.num_iters):
             # choose component to update for each catalog
-            component_mask = torch.where(fluxes == 0, 0, component_multinom.sample())
+            component_mask = component_multinom.sample()
 
             # propose locs and fluxes
             locs_proposed = locs_prev * (1 - component_mask.unsqueeze(-1)) + (
@@ -67,39 +61,19 @@ class SingleComponentMH(object):
             )
 
             # compute log numerator
-            if unjoin is not None and axis is not None and ChildImageModel is not None:
-                child_data, _, child_locs_proposed, child_fluxes_proposed = unjoin(
-                    axis,
-                    data,
-                    locs_proposed,
-                    fluxes_proposed,
-                )
-                log_num_target = log_target(
-                    axis,
-                    ChildImageModel,
-                    child_data,
-                    child_locs_proposed,
-                    child_fluxes_proposed,
-                    data,
-                    counts,
-                    locs_proposed,
-                    fluxes_proposed,
-                    temperature,
-                )
-            elif unjoin is None and axis is None and ChildImageModel is None:
-                log_num_target = log_target(
-                    data,
-                    counts,
-                    locs_proposed,
-                    fluxes_proposed,
-                    temperature,
-                )
+            log_num_target = log_target(
+                data,
+                counts,
+                locs_proposed,
+                fluxes_proposed,
+                temperature,
+            )
             log_num_qlocs = (
                 TruncatedDiagonalMVN(
                     locs_proposed, self.locs_stdev, self.locs_min, self.locs_max
                 ).log_prob(locs_prev)
                 * component_mask.unsqueeze(-1)
-            ).sum([3, 4])
+            ).sum([-2, -1])
             log_num_qfluxes = (
                 TruncatedDiagonalMVN(
                     fluxes_proposed + self.fluxes_min * (fluxes_proposed == 0),
@@ -108,44 +82,24 @@ class SingleComponentMH(object):
                     self.fluxes_max,
                 ).log_prob(fluxes_prev + self.fluxes_min * (fluxes_prev == 0))
                 * component_mask
-            ).sum(3)
+            ).sum(-1)
             log_numerator = log_num_target + log_num_qlocs + log_num_qfluxes
 
             # compute log denominator
             if iter == 0:
-                if unjoin is not None:
-                    child_data, _, child_locs_prev, child_fluxes_prev = unjoin(
-                        axis,
-                        data,
-                        locs_prev,
-                        fluxes_prev,
-                    )
-                    log_denom_target = log_target(
-                        axis,
-                        ChildImageModel,
-                        child_data,
-                        child_locs_prev,
-                        child_fluxes_prev,
-                        data,
-                        counts,
-                        locs_prev,
-                        fluxes_prev,
-                        temperature,
-                    )
-                elif unjoin is None:
-                    log_denom_target = log_target(
-                        data,
-                        counts,
-                        locs_prev,
-                        fluxes_prev,
-                        temperature,
-                    )
+                log_denom_target = log_target(
+                    data,
+                    counts,
+                    locs_prev,
+                    fluxes_prev,
+                    temperature,
+                )
             log_denom_qlocs = (
                 TruncatedDiagonalMVN(
                     locs_prev, self.locs_stdev, self.locs_min, self.locs_max
                 ).log_prob(locs_proposed)
                 * component_mask.unsqueeze(-1)
-            ).sum([3, 4])
+            ).sum([-2, -1])
             log_denom_qfluxes = (
                 TruncatedDiagonalMVN(
                     fluxes_prev + self.fluxes_min * (fluxes_prev == 0),
@@ -154,7 +108,7 @@ class SingleComponentMH(object):
                     self.fluxes_max,
                 ).log_prob(fluxes_proposed + self.fluxes_min * (fluxes_proposed == 0))
                 * component_mask
-            ).sum(3)
+            ).sum(-1)
             log_denominator = log_denom_target + log_denom_qlocs + log_denom_qfluxes
 
             alpha = (log_numerator - log_denominator).exp().clamp(max=1)
