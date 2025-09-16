@@ -134,7 +134,7 @@ class SMCsampler(object):
                 numW=self.num_tiles_per_side,
             )
             rand = torch.rand([self.num_tiles_per_side, self.num_tiles_per_side])
-            u = (seq + rand) / self.num_catalogs
+            u = (seq + rand.unsqueeze(-1)) / self.num_catalogs
             bins = self.weights.cumsum(-1)
             for h in range(self.num_tiles_per_side):
                 for w in range(self.num_tiles_per_side):
