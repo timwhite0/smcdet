@@ -117,34 +117,24 @@ class SMCsampler(object):
         )
         loglik = self.loglik.cpu()
 
-        solutions = torch.zeros(
-            self.num_tiles_per_side, self.num_tiles_per_side, self.num_counts
-        )
+        delta = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
 
-        for c in range(self.num_counts):
-            lower = c * self.num_catalogs_per_count
-            upper = (c + 1) * self.num_catalogs_per_count
+        for h in range(self.num_tiles_per_side):
+            for w in range(self.num_tiles_per_side):
 
-            for h in range(self.num_tiles_per_side):
-                for w in range(self.num_tiles_per_side):
+                def func(delta):
+                    return self.tempering_objective(loglik[h, w], delta)
 
-                    def func(delta):
-                        return self.tempering_objective(
-                            loglik[h, w, lower:upper], delta
-                        )
-
-                    if func(1 - self.temperature[h, w].item()) < 0:
-                        solutions[h, w, c] = brentq(
-                            func,
-                            0.0,
-                            1 - self.temperature[h, w].item(),
-                            xtol=1e-6,
-                            rtol=1e-6,
-                        )
-                    else:
-                        solutions[h, w, c] = 1 - self.temperature[h, w].item()
-
-        delta = solutions.min(-1).values
+                if func(1 - self.temperature[h, w].item()) < 0:
+                    delta[h, w] = brentq(
+                        func,
+                        0.0,
+                        1 - self.temperature[h, w].item(),
+                        xtol=1e-6,
+                        rtol=1e-6,
+                    )
+                else:
+                    delta[h, w] = 1 - self.temperature[h, w].item()
 
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + delta
