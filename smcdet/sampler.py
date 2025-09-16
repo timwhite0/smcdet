@@ -14,6 +14,7 @@ class SMCsampler(object):
         num_catalogs,
         ess_threshold_prop,
         resample_method,
+        flux_detection_threshold,
         max_smc_iters,
         print_every=5,
     ):
@@ -34,17 +35,19 @@ class SMCsampler(object):
 
         self.num_catalogs = num_catalogs
 
+        self.ess_threshold = ess_threshold_prop * num_catalogs
+
         if resample_method not in {"multinomial", "systematic"}:
             raise ValueError(
                 "resample_method must be either multinomial or systematic."
             )
         self.resample_method = resample_method
 
+        self.flux_detection_threshold = flux_detection_threshold
+
         self.max_smc_iters = max_smc_iters
 
         self.print_every = print_every
-
-        self.ess_threshold = ess_threshold_prop * num_catalogs
 
         self.has_run = False
 
@@ -160,7 +163,7 @@ class SMCsampler(object):
                 t=self.locs.shape[-1],
             ),
         )
-        self.weights = 1 / self.num_catalogs
+        self.weights = (1 / self.num_catalogs) * torch.ones_like(self.weights)
 
     def mutate(self):
         self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
@@ -189,10 +192,33 @@ class SMCsampler(object):
             self.log_normalizing_constant + m + (s / self.num_catalogs).log()
         )
 
+    def prune(self, locs, fluxes):
+        mask = torch.all(
+            torch.logical_and(
+                locs > 0, locs < torch.tensor((self.tile_dim, self.tile_dim))
+            ),
+            dim=-1,
+        )
+        mask *= fluxes > self.flux_detection_threshold
+
+        counts = mask.sum(-1)
+
+        locs = mask.unsqueeze(-1) * locs
+        locs_mask = (locs != 0).int()
+        locs_index = torch.sort(locs_mask, dim=3, descending=True)[1]
+        locs = torch.gather(locs, dim=3, index=locs_index)
+
+        fluxes = mask * fluxes
+        fluxes_mask = (fluxes != 0).int()
+        fluxes_index = torch.sort(fluxes_mask, dim=3, descending=True)[1]
+        fluxes = torch.gather(fluxes, dim=3, index=fluxes_index)
+
+        return counts, locs, fluxes
+
     def run(self):
         self.iter = 0
 
-        print("starting the tile samplers...")
+        print("starting...")
 
         self.initialize()
         self.temper()
@@ -217,19 +243,53 @@ class SMCsampler(object):
             self.temper()
             self.update_weights()
 
+        self.resample()
+        self.pruned_counts, self.pruned_locs, self.pruned_fluxes = self.prune(
+            self.locs, self.fluxes
+        )
+
         self.has_run = True
 
         print("done!\n")
 
+    def posterior_mean_count(self, counts):
+        return (self.weights * counts).sum(-1)
+
+    def posterior_mean_total_flux(self, fluxes):
+        return (self.weights * fluxes.sum(-1)).sum(-1)
+
     @property
-    def posterior_mean_counts(self):
-        return (self.weights * self.counts).sum(-1)
+    def posterior_predictive_total_observed_flux(self):
+        return self.ImageModel.sample(self.locs, self.fluxes).sum([-2, -3]).squeeze()
 
     def summarize(self):
         if self.has_run is False:
             raise ValueError("Sampler hasn't been run yet.")
 
-        print(f"summary:\nnumber of SMC iterations = {self.iter}\n")
         print(
-            f"posterior mean count by tile (including padding):\n{self.posterior_mean_counts}"
+            "posterior distribution of number of detectable stars within image boundary:"
+        )
+        print(self.pruned_counts.unique(return_counts=True)[0].cpu())
+        print(
+            (
+                self.pruned_counts.unique(return_counts=True)[1]
+                / self.pruned_counts.shape[-1]
+            )
+            .round(decimals=3)
+            .cpu(),
+            "\n",
+        )
+
+        print(
+            "posterior mean total intrinsic flux (including undetectable and/or in padding) =",
+            f"{self.posterior_mean_total_flux(self.fluxes).item()}\n",
+        )
+
+        print(
+            "posterior mean total intrinsic flux of detectable stars within image boundary =",
+            f"{self.posterior_mean_total_flux(self.pruned_fluxes).item()}\n",
+        )
+
+        print(
+            f"number of unique catalogs = {self.fluxes[0, 0].sum(-1).unique(dim=0).shape[0]}"
         )
