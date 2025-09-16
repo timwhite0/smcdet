@@ -1,4 +1,5 @@
 import torch
+from einops import repeat
 from scipy.optimize import brentq
 
 
@@ -10,7 +11,7 @@ class SMCsampler(object):
         Prior,
         ImageModel,
         MutationKernel,
-        num_catalogs_per_count,
+        num_catalogs,
         ess_threshold_prop,
         resample_method,
         max_smc_iters,
@@ -32,14 +33,7 @@ class SMCsampler(object):
         self.MutationKernel.locs_max = self.Prior.loc_prior.high
         self.mutation_acc_rates = None
 
-        self.min_objects = self.Prior.min_objects
-        self.max_objects = self.Prior.max_objects
-        self.num_counts = self.max_objects - self.min_objects + 1
-        self.count_prior_log_probs = self.Prior.count_prior.log_prob(
-            torch.arange(self.min_objects, self.max_objects + 1)
-        )
-        self.num_catalogs_per_count = num_catalogs_per_count
-        self.num_catalogs = self.num_counts * self.num_catalogs_per_count
+        self.num_catalogs = num_catalogs
 
         if resample_method not in {"multinomial", "systematic"}:
             raise ValueError(
@@ -55,12 +49,9 @@ class SMCsampler(object):
         cats = self.Prior.sample(
             num_tiles_per_side=self.num_tiles_per_side,
             stratify_by_count=True,
-            num_catalogs_per_count=self.num_catalogs_per_count,
+            num_catalogs_per_count=self.num_catalogs,
         )
         self.counts, self.locs, self.fluxes = cats
-        self.fluxes = self.fluxes.clamp(
-            min=self.MutationKernel.fluxes_min, max=self.MutationKernel.fluxes_max
-        ) * (self.fluxes != 0)
 
         # initialize temperature
         self.temperature_prev = torch.zeros(
@@ -77,25 +68,12 @@ class SMCsampler(object):
         self.weights_log_unnorm = torch.zeros(
             self.num_tiles_per_side, self.num_tiles_per_side, self.num_catalogs
         )
-        self.weights_intracount = torch.stack(
-            torch.split(self.weights_log_unnorm, self.num_catalogs_per_count, dim=2),
-            dim=2,
-        ).softmax(3)
-        self.weights_intercount = self.weights_log_unnorm.softmax(2)
-        self.log_normalizing_constant = (
-            torch.stack(
-                torch.split(
-                    self.weights_log_unnorm.exp(), self.num_catalogs_per_count, dim=-1
-                ),
-                dim=-1,
-            )
-            .mean(-2)
-            .log()
-        )
+        self.weights = self.weights_log_unnorm.softmax(-1)
+        self.log_normalizing_constant = self.weights_log_unnorm.exp().mean(-1).log()
 
         # set ESS thresholds
-        self.ess = 1 / (self.weights_intracount**2).sum(-1)
-        self.ess_threshold = ess_threshold_prop * num_catalogs_per_count
+        self.ess = 1 / (self.weights**2).sum(-1)
+        self.ess_threshold = ess_threshold_prop * num_catalogs
 
         self.has_run = False
 
@@ -140,46 +118,46 @@ class SMCsampler(object):
         self.temperature = self.temperature + delta
 
     def resample(self):
-        for count_num in range(self.num_counts):
-            weights = self.weights_intracount[:, :, count_num, :]
+        resampled_index_flat = self.weights.flatten(0, 1).multinomial(
+            self.num_catalogs, replacement=True
+        )
+        resampled_index = resampled_index_flat.unflatten(
+            0, (self.num_tiles_per_side, self.num_tiles_per_side)
+        ).clamp(min=0, max=self.num_catalogs - 1)
 
-            if self.resample_method == "multinomial":
-                weights_intracount_flat = weights.flatten(0, 1)
-                resampled_index_flat = weights_intracount_flat.multinomial(
-                    self.num_catalogs_per_count, replacement=True
-                )
-                resampled_index = resampled_index_flat.unflatten(
-                    0, (self.num_tiles_per_side, self.num_tiles_per_side)
-                )
-            elif self.resample_method == "systematic":
-                resampled_index = torch.zeros_like(weights)
-                for h in range(self.num_tiles_per_side):
-                    for w in range(self.num_tiles_per_side):
-                        u = (
-                            torch.arange(self.num_catalogs_per_count) + torch.rand([1])
-                        ) / self.num_catalogs_per_count
-                        bins = weights[h, w].cumsum(0)
-                        resampled_index[h, w] = torch.bucketize(u, bins)
+        self.counts = torch.gather(self.counts, -1, resampled_index)
+        self.fluxes = torch.gather(
+            self.fluxes,
+            -2,
+            repeat(
+                resampled_index, "numH numW n -> numH numW n d", d=self.fluxes.shape[-1]
+            ),
+        )
+        self.locs = torch.gather(
+            self.locs,
+            -3,
+            repeat(
+                resampled_index,
+                "numH numW n -> numH numW n d t",
+                d=self.locs.shape[-2],
+                t=self.locs.shape[-1],
+            ),
+        )
+        self.weights = 1 / self.num_catalogs
 
-            resampled_index = resampled_index.int().clamp(
-                min=0, max=self.num_catalogs_per_count - 1
-            )
+        # elif self.resample_method == "systematic":
+        #     resampled_index = torch.zeros_like(weights)
+        #     for h in range(self.num_tiles_per_side):
+        #         for w in range(self.num_tiles_per_side):
+        #             u = (
+        #                 torch.arange(self.num_catalogs_per_count) + torch.rand([1])
+        #             ) / self.num_catalogs_per_count
+        #             bins = weights[h, w].cumsum(0)
+        #             resampled_index[h, w] = torch.bucketize(u, bins)
 
-            lower = count_num * self.num_catalogs_per_count
-            upper = (count_num + 1) * self.num_catalogs_per_count
-
-            for h in range(self.num_tiles_per_side):
-                for w in range(self.num_tiles_per_side):
-                    l = self.locs[h, w, lower:upper, :, :]
-                    f = self.fluxes[h, w, lower:upper, :]
-                    self.locs[h, w, lower:upper, :, :] = l[
-                        resampled_index[h, w, :], :, :
-                    ]
-                    self.fluxes[h, w, lower:upper, :] = f[resampled_index[h, w, :], :]
-
-            self.weights_intracount[:, :, count_num, :] = (
-                1 / self.num_catalogs_per_count
-            )
+        # resampled_index = resampled_index.int().clamp(
+        #     min=0, max=self.num_catalogs_per_count - 1
+        # )
 
     def mutate(self):
         self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
@@ -197,43 +175,16 @@ class SMCsampler(object):
             -torch.inf,
         )
 
-        self.weights_intracount = torch.stack(
-            torch.split(self.weights_log_unnorm, self.num_catalogs_per_count, dim=2),
-            dim=2,
-        ).softmax(3)
+        self.weights = self.weights_log_unnorm.softmax(-1)
 
-        self.ess = 1 / (self.weights_intracount**2).sum(3)
+        self.ess = 1 / (self.weights**2).sum(-1)
 
-        m = (
-            torch.stack(
-                torch.split(
-                    self.weights_log_unnorm, self.num_catalogs_per_count, dim=-1
-                ),
-                dim=-1,
-            )
-            .max(-2)
-            .values
-        )
-        w = (
-            torch.stack(
-                torch.split(
-                    self.weights_log_unnorm, self.num_catalogs_per_count, dim=-1
-                ),
-                dim=-1,
-            )
-            - m.unsqueeze(-2)
-        ).exp()
-        s = w.sum(-2)
+        m = self.weights_log_unnorm.max(-1).values
+        w = (self.weights_log_unnorm - m.unsqueeze(-1)).exp()
+        s = w.sum(-1)
         self.log_normalizing_constant = (
-            self.log_normalizing_constant + m + (s / self.num_catalogs_per_count).log()
+            self.log_normalizing_constant + m + (s / self.num_catalogs).log()
         )
-
-        self.weights_intercount = (
-            self.weights_intracount
-            * (self.count_prior_log_probs + self.log_normalizing_constant)
-            .softmax(-1)
-            .unsqueeze(-1)
-        ).flatten(-2, -1)
 
     def run(self):
         self.iter = 0
@@ -268,7 +219,7 @@ class SMCsampler(object):
 
     @property
     def posterior_mean_counts(self):
-        return (self.weights_intercount * self.counts).sum(-1)
+        return (self.weights * self.counts).sum(-1)
 
     def summarize(self):
         if self.has_run is False:
