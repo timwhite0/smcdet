@@ -144,14 +144,14 @@ class SMCsampler(object):
         self.counts = torch.gather(self.counts, -1, resampled_index)
         self.fluxes = torch.gather(
             self.fluxes,
-            -2,
+            2,
             repeat(
                 resampled_index, "numH numW n -> numH numW n d", d=self.fluxes.shape[-1]
             ),
         )
         self.locs = torch.gather(
             self.locs,
-            -3,
+            2,
             repeat(
                 resampled_index,
                 "numH numW n -> numH numW n d t",
