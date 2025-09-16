@@ -31,7 +31,6 @@ class SMCsampler(object):
         self.MutationKernel = MutationKernel
         self.MutationKernel.locs_min = self.Prior.loc_prior.low
         self.MutationKernel.locs_max = self.Prior.loc_prior.high
-        self.mutation_acc_rates = None
 
         self.num_catalogs = num_catalogs
 
@@ -45,6 +44,11 @@ class SMCsampler(object):
 
         self.print_every = print_every
 
+        self.ess_threshold = ess_threshold_prop * num_catalogs
+
+        self.has_run = False
+
+    def initialize(self):
         # initialize catalogs
         cats = self.Prior.sample(
             num_tiles_per_side=self.num_tiles_per_side,
@@ -64,18 +68,15 @@ class SMCsampler(object):
             self.tiled_image, self.locs, self.fluxes
         )
 
-        # initialize weights
+        # initialize weights and normalizing constant
         self.weights_log_unnorm = torch.zeros(
             self.num_tiles_per_side, self.num_tiles_per_side, self.num_catalogs
         )
         self.weights = self.weights_log_unnorm.softmax(-1)
         self.log_normalizing_constant = self.weights_log_unnorm.exp().mean(-1).log()
 
-        # set ESS thresholds
+        # compute initial ess
         self.ess = 1 / (self.weights**2).sum(-1)
-        self.ess_threshold = ess_threshold_prop * num_catalogs
-
-        self.has_run = False
 
     def log_target(self, data, counts, locs, fluxes, temperature):
         logprior = self.Prior.log_prob(counts, locs, fluxes)
@@ -193,6 +194,7 @@ class SMCsampler(object):
 
         print("starting the tile samplers...")
 
+        self.initialize()
         self.temper()
         self.update_weights()
 
