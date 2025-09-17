@@ -526,3 +526,41 @@ class MHsampler(object):
         )
 
         self.has_run = True
+
+    def posterior_mean_count(self, counts):
+        return counts.float().mean(-1)
+
+    def posterior_mean_total_flux(self, fluxes):
+        return fluxes.sum(-1).mean()
+
+    @property
+    def posterior_predictive_total_observed_flux(self):
+        return self.ImageModel.sample(self.locs, self.fluxes).sum([-2, -3]).squeeze()
+
+    def summarize(self):
+        if self.has_run is False:
+            raise ValueError("Sampler hasn't been run yet.")
+
+        print(
+            "posterior distribution of number of detectable stars within image boundary:"
+        )
+        print(self.pruned_counts.unique(return_counts=True)[0].cpu())
+        print(
+            (
+                self.pruned_counts.unique(return_counts=True)[1]
+                / self.pruned_counts.shape[-1]
+            )
+            .round(decimals=3)
+            .cpu(),
+            "\n",
+        )
+
+        print(
+            "posterior mean total intrinsic flux (including undetectable and/or in padding) =",
+            f"{self.posterior_mean_total_flux(self.fluxes).item()}\n",
+        )
+
+        print(
+            "posterior mean total intrinsic flux of detectable stars within image boundary =",
+            f"{self.posterior_mean_total_flux(self.pruned_fluxes).item()}\n",
+        )
