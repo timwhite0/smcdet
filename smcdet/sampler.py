@@ -308,7 +308,8 @@ class MHsampler(object):
         locs_stdev,
         fluxes_stdev,
         flux_detection_threshold,
-        num_samples,
+        num_samples_total,
+        num_samples_burnin,
     ):
         self.image = image
         self.image_dim = image.shape[0]
@@ -330,23 +331,26 @@ class MHsampler(object):
         self.fluxes_max = torch.tensor(Prior.flux_upper)
         self.flux_detection_threshold = flux_detection_threshold
 
-        self.num_samples = num_samples
+        self.num_samples_total = num_samples_total
+        self.num_samples_burnin = num_samples_burnin
 
         self.counts = (
-            torch.ones(self.num_tiles_per_side, self.num_tiles_per_side, num_samples)
+            torch.ones(
+                self.num_tiles_per_side, self.num_tiles_per_side, num_samples_total
+            )
             * Prior.max_objects
         )
         self.locs = torch.zeros(
             self.num_tiles_per_side,
             self.num_tiles_per_side,
-            num_samples,
+            num_samples_total,
             Prior.max_objects,
             2,
         )
         self.fluxes = torch.zeros(
             self.num_tiles_per_side,
             self.num_tiles_per_side,
-            num_samples,
+            num_samples_total,
             Prior.max_objects,
         )
 
@@ -372,7 +376,7 @@ class MHsampler(object):
         self.accept = torch.zeros(
             self.num_tiles_per_side,
             self.num_tiles_per_side,
-            num_samples - 1,
+            num_samples_total - 1,
             dtype=torch.int,
         )
 
@@ -411,7 +415,7 @@ class MHsampler(object):
         locs_prev = self.locs[..., 0, :, :].unsqueeze(2)
         fluxes_prev = self.fluxes[..., 0, :].unsqueeze(2)
 
-        for n in range(self.num_samples - 1):
+        for n in range(self.num_samples_total - 1):
             print(n)
             component_mask = self.component_multinom.sample()
 
@@ -508,6 +512,12 @@ class MHsampler(object):
                 self.accept[..., n]
             ) + log_denom_target * (1 - self.accept[..., n])
 
+        # discard burnin samples
+        self.counts = self.counts[..., self.num_samples_burnin :]
+        self.locs = self.locs[..., self.num_samples_burnin :, :, :]
+        self.fluxes = self.fluxes[..., self.num_samples_burnin :, :]
+
+        # apply location and flux thresholds
         self.pruned_counts, self.pruned_locs, self.pruned_fluxes = self.prune(
             self.locs, self.fluxes
         )
