@@ -1,6 +1,9 @@
 import torch
 from einops import repeat
 from scipy.optimize import brentq
+from torch.distributions import Multinomial, Uniform
+
+from smcdet.distributions import TruncatedDiagonalMVN
 
 
 class SMCsampler(object):
@@ -293,3 +296,207 @@ class SMCsampler(object):
         print(
             f"number of unique catalogs = {self.fluxes[0, 0].sum(-1).unique(dim=0).shape[0]}"
         )
+
+
+class MHsampler(object):
+    def __init__(
+        self,
+        image,
+        tile_dim,
+        Prior,
+        ImageModel,
+        locs_stdev,
+        fluxes_stdev,
+        flux_detection_threshold,
+        num_iters,
+    ):
+        self.image = image
+        self.image_dim = image.shape[0]
+
+        self.tile_dim = tile_dim
+        self.num_tiles_per_side = self.image_dim // self.tile_dim
+        self.tiled_image = image.unfold(0, self.tile_dim, self.tile_dim).unfold(
+            1, self.tile_dim, self.tile_dim
+        )
+
+        self.Prior = Prior
+        self.ImageModel = ImageModel
+
+        self.locs_stdev = torch.tensor(locs_stdev)
+        self.locs_min = Prior.loc_prior.low
+        self.locs_max = Prior.loc_prior.high
+        self.fluxes_stdev = torch.tensor(fluxes_stdev)
+        self.fluxes_min = torch.tensor(Prior.flux_lower)
+        self.fluxes_max = torch.tensor(Prior.flux_upper)
+        self.flux_detection_threshold = flux_detection_threshold
+
+        self.num_iters = num_iters
+
+        self.counts = (
+            torch.ones(self.num_tiles_per_side, self.num_tiles_per_side, num_iters)
+            * Prior.max_objects
+        )
+        self.locs = torch.zeros(
+            self.num_tiles_per_side,
+            self.num_tiles_per_side,
+            num_iters,
+            Prior.max_objects,
+            2,
+        )
+        self.fluxes = torch.zeros(
+            self.num_tiles_per_side,
+            self.num_tiles_per_side,
+            num_iters,
+            Prior.max_objects,
+        )
+
+        _, l, f = self.Prior.sample(
+            num_tiles_per_side=self.num_tiles_per_side,
+            stratify_by_count=True,
+            num_catalogs_per_count=1,
+        )
+        self.locs[..., 0, :, :] = l[..., 0, :, :]
+        self.fluxes[..., 0, :] = f[..., 0, :]
+
+        self.component_multinom = Multinomial(
+            total_count=1,
+            probs=1 / self.fluxes.shape[-1] * torch.ones_like(self.fluxes[..., 0, :]),
+        )
+        self.AcceptRejectDist = Uniform(
+            torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, 1),
+            torch.ones(self.num_tiles_per_side, self.num_tiles_per_side, 1),
+        )
+
+        self.has_run = False
+
+    def log_target(self, data, counts, locs, fluxes):
+        logprior = self.Prior.log_prob(counts, locs, fluxes)
+        loglik = self.ImageModel.loglikelihood(data, locs, fluxes)
+
+        return logprior + loglik
+
+    def prune(self, locs, fluxes):
+        mask = torch.all(
+            torch.logical_and(
+                locs > 0, locs < torch.tensor((self.tile_dim, self.tile_dim))
+            ),
+            dim=-1,
+        )
+        mask *= fluxes > self.flux_detection_threshold
+
+        counts = mask.sum(-1)
+
+        locs = mask.unsqueeze(-1) * locs
+        locs_mask = (locs != 0).int()
+        locs_index = torch.sort(locs_mask, dim=3, descending=True)[1]
+        locs = torch.gather(locs, dim=3, index=locs_index)
+
+        fluxes = mask * fluxes
+        fluxes_mask = (fluxes != 0).int()
+        fluxes_index = torch.sort(fluxes_mask, dim=3, descending=True)[1]
+        fluxes = torch.gather(fluxes, dim=3, index=fluxes_index)
+
+        return counts, locs, fluxes
+
+    def run(self):
+        for n in range(self.num_iters - 1):
+            component_mask = self.component_multinom.sample()
+
+            # propose locs and fluxes
+            locs_proposed = self.locs[..., n, :, :].unsqueeze(2) * (
+                1 - component_mask.unsqueeze(-1)
+            ) + (
+                TruncatedDiagonalMVN(
+                    self.locs[..., n, :, :].unsqueeze(2),
+                    self.locs_stdev,
+                    self.locs_min,
+                    self.locs_max,
+                ).sample()
+                * component_mask.unsqueeze(-1)
+            )
+            fluxes_proposed = self.fluxes[..., n, :].unsqueeze(2) * (
+                1 - component_mask
+            ) + (
+                TruncatedDiagonalMVN(
+                    self.fluxes[..., n, :].unsqueeze(2),
+                    self.fluxes_stdev,
+                    self.fluxes_min,
+                    self.fluxes_max,
+                ).sample()
+                * component_mask
+            )
+
+            # compute log numerator
+            log_num_target = self.log_target(
+                self.tiled_image,
+                self.counts[..., n].unsqueeze(2),
+                locs_proposed,
+                fluxes_proposed,
+            )
+            log_num_qlocs = (
+                TruncatedDiagonalMVN(
+                    locs_proposed, self.locs_stdev, self.locs_min, self.locs_max
+                ).log_prob(self.locs[..., n, :, :].unsqueeze(2))
+                * component_mask.unsqueeze(-1)
+            ).sum([-2, -1])
+            log_num_qfluxes = (
+                TruncatedDiagonalMVN(
+                    fluxes_proposed,
+                    self.fluxes_stdev,
+                    self.fluxes_min,
+                    self.fluxes_max,
+                ).log_prob(self.fluxes[..., n, :].unsqueeze(2))
+                * component_mask
+            ).sum(-1)
+            log_numerator = log_num_target + log_num_qlocs + log_num_qfluxes
+
+            # compute log denominator
+            if n == 0:
+                log_denom_target = self.log_target(
+                    self.tiled_image,
+                    self.counts[..., n].unsqueeze(2),
+                    self.locs[..., n, :, :].unsqueeze(2),
+                    self.fluxes[..., n, :].unsqueeze(2),
+                )
+            log_denom_qlocs = (
+                TruncatedDiagonalMVN(
+                    self.locs[..., n, :, :].unsqueeze(2),
+                    self.locs_stdev,
+                    self.locs_min,
+                    self.locs_max,
+                ).log_prob(locs_proposed)
+                * component_mask.unsqueeze(-1)
+            ).sum([-2, -1])
+            log_denom_qfluxes = (
+                TruncatedDiagonalMVN(
+                    self.fluxes[..., n, :].unsqueeze(2),
+                    self.fluxes_stdev,
+                    self.fluxes_min,
+                    self.fluxes_max,
+                ).log_prob(fluxes_proposed)
+                * component_mask
+            ).sum(-1)
+            log_denominator = log_denom_target + log_denom_qlocs + log_denom_qfluxes
+
+            alpha = (log_numerator - log_denominator).exp().clamp(max=1)
+            prob = self.AcceptRejectDist.sample()
+            accept = prob <= alpha
+
+            accept_l = (accept).unsqueeze(-1).unsqueeze(-1)
+            self.locs[..., n + 1, :, :] = locs_proposed * (accept_l) + self.locs[
+                ..., n, :, :
+            ].unsqueeze(2) * (~accept_l)
+
+            accept_f = (accept).unsqueeze(-1)
+            self.fluxes[..., n + 1, :] = fluxes_proposed * (accept_f) + self.fluxes[
+                ..., n, :
+            ].unsqueeze(2) * (~accept_f)
+
+            # cache denominator loglik for next iteration
+            log_denom_target = log_num_target * (accept) + log_denom_target * (~accept)
+
+        self.pruned_counts, self.pruned_locs, self.pruned_fluxes = self.prune(
+            self.locs, self.fluxes
+        )
+
+        self.has_run = True
