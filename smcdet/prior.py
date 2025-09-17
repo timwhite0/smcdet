@@ -70,9 +70,7 @@ class PointProcessPrior(object):
         ) < counts.unsqueeze(-1)
 
         log_prior = self.count_prior.log_prob(counts)
-        log_prior += (
-            self.loc_prior.log_prob(locs) * self.counts_mask.unsqueeze(-1)
-        ).sum([-1, -2])
+        log_prior += (self.loc_prior.log_prob(locs).sum(-1) * self.counts_mask).sum(-1)
 
         return log_prior
 
