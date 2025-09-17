@@ -1,5 +1,5 @@
 import torch
-from einops import repeat
+from einops import rearrange, repeat
 from scipy.optimize import brentq
 from torch.distributions import Multinomial, Uniform
 
@@ -311,6 +311,7 @@ class MHsampler(object):
         num_samples_total,
         num_samples_burnin,
         keep_every_k: int = 1,
+        print_every: int = 1000,
     ):
         self.image = image
         self.image_dim = image.shape[0]
@@ -372,8 +373,8 @@ class MHsampler(object):
             * torch.ones_like(self.fluxes[..., 0, :].unsqueeze(2)),
         )
         self.AcceptRejectDist = Uniform(
-            torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, 1),
-            torch.ones(self.num_tiles_per_side, self.num_tiles_per_side, 1),
+            torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side),
+            torch.ones(self.num_tiles_per_side, self.num_tiles_per_side),
         )
 
         self.accept = torch.zeros(
@@ -382,6 +383,8 @@ class MHsampler(object):
             num_samples_total - 1,
             dtype=torch.int,
         )
+
+        self.print_every = print_every
 
         self.has_run = False
 
@@ -419,7 +422,15 @@ class MHsampler(object):
         fluxes_prev = self.fluxes[..., 0, :].unsqueeze(2)
 
         for n in range(self.num_samples_total - 1):
-            print(n)
+            if (n > 0) and (n % self.print_every == 0):
+                mean_acc = self.accept[..., (n - self.print_every) : n].float().mean()
+                print(
+                    (
+                        f"iteration {n}, "
+                        f"acceptance rate in past {self.print_every} iters = {mean_acc:.2f}\n"
+                    )
+                )
+
             component_mask = self.component_multinom.sample()
 
             # propose locs and fluxes
@@ -494,28 +505,27 @@ class MHsampler(object):
             ).sum(-1)
             log_denominator = log_denom_target + log_denom_qlocs + log_denom_qfluxes
 
-            alpha = (log_numerator - log_denominator).exp().clamp(max=1)
+            alpha = (log_numerator - log_denominator).exp().clamp(max=1).squeeze(-1)
             prob = self.AcceptRejectDist.sample()
             self.accept[..., n] = prob <= alpha
 
-            accept_l = (self.accept[..., n]).unsqueeze(-1).unsqueeze(-1)
-            self.locs[..., n + 1, :, :] = locs_proposed * (accept_l) + locs_prev * (
-                1 - accept_l
-            )
-            locs_prev = self.locs[..., n + 1, :, :]
+            accept_l = rearrange(self.accept[..., n], "numH numW -> numH numW 1 1 1")
+            locs_new = locs_proposed * (accept_l) + locs_prev * (1 - accept_l)
+            self.locs[..., n + 1, :, :] = locs_new.squeeze(2)
+            locs_prev = locs_new
 
-            accept_f = (self.accept[..., n]).unsqueeze(-1)
-            self.fluxes[..., n + 1, :] = fluxes_proposed * (accept_f) + fluxes_prev * (
-                1 - accept_f
-            )
-            fluxes_prev = self.fluxes[..., n + 1, :]
+            accept_f = rearrange(self.accept[..., n], "numH numW -> numH numW 1 1")
+            fluxes_new = fluxes_proposed * (accept_f) + fluxes_prev * (1 - accept_f)
+            self.fluxes[..., n + 1, :] = fluxes_new.squeeze(2)
+            fluxes_prev = fluxes_new
 
             # cache denominator loglik for next iteration
-            log_denom_target = log_num_target * (
-                self.accept[..., n]
-            ) + log_denom_target * (1 - self.accept[..., n])
+            accept_ldt = rearrange(self.accept[..., n], "numH numW -> numH numW 1")
+            log_denom_target = log_num_target * accept_ldt + log_denom_target * (
+                1 - accept_ldt
+            )
 
-        # discard burnin samples and thin the chain
+        # discard burn-in samples and thin the chain
         self.counts = self.counts[..., self.burn_thin_idx]
         self.locs = self.locs[..., self.burn_thin_idx, :, :]
         self.fluxes = self.fluxes[..., self.burn_thin_idx, :]
