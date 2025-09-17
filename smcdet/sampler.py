@@ -310,6 +310,7 @@ class MHsampler(object):
         flux_detection_threshold,
         num_samples_total,
         num_samples_burnin,
+        keep_every_k: int = 1,
     ):
         self.image = image
         self.image_dim = image.shape[0]
@@ -332,7 +333,9 @@ class MHsampler(object):
         self.flux_detection_threshold = flux_detection_threshold
 
         self.num_samples_total = num_samples_total
-        self.num_samples_burnin = num_samples_burnin
+        self.burn_thin_idx = torch.arange(
+            num_samples_burnin, num_samples_total, step=keep_every_k
+        )
 
         self.counts = (
             torch.ones(
@@ -512,10 +515,10 @@ class MHsampler(object):
                 self.accept[..., n]
             ) + log_denom_target * (1 - self.accept[..., n])
 
-        # discard burnin samples
-        self.counts = self.counts[..., self.num_samples_burnin :]
-        self.locs = self.locs[..., self.num_samples_burnin :, :, :]
-        self.fluxes = self.fluxes[..., self.num_samples_burnin :, :]
+        # discard burnin samples and thin the chain
+        self.counts = self.counts[..., self.burn_thin_idx]
+        self.locs = self.locs[..., self.burn_thin_idx, :, :]
+        self.fluxes = self.fluxes[..., self.burn_thin_idx, :]
 
         # apply location and flux thresholds
         self.pruned_counts, self.pruned_locs, self.pruned_fluxes = self.prune(
