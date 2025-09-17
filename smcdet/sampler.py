@@ -308,7 +308,7 @@ class MHsampler(object):
         locs_stdev,
         fluxes_stdev,
         flux_detection_threshold,
-        num_iters,
+        num_samples,
     ):
         self.image = image
         self.image_dim = image.shape[0]
@@ -330,23 +330,23 @@ class MHsampler(object):
         self.fluxes_max = torch.tensor(Prior.flux_upper)
         self.flux_detection_threshold = flux_detection_threshold
 
-        self.num_iters = num_iters
+        self.num_samples = num_samples
 
         self.counts = (
-            torch.ones(self.num_tiles_per_side, self.num_tiles_per_side, num_iters)
+            torch.ones(self.num_tiles_per_side, self.num_tiles_per_side, num_samples)
             * Prior.max_objects
         )
         self.locs = torch.zeros(
             self.num_tiles_per_side,
             self.num_tiles_per_side,
-            num_iters,
+            num_samples,
             Prior.max_objects,
             2,
         )
         self.fluxes = torch.zeros(
             self.num_tiles_per_side,
             self.num_tiles_per_side,
-            num_iters,
+            num_samples,
             Prior.max_objects,
         )
 
@@ -360,11 +360,20 @@ class MHsampler(object):
 
         self.component_multinom = Multinomial(
             total_count=1,
-            probs=1 / self.fluxes.shape[-1] * torch.ones_like(self.fluxes[..., 0, :]),
+            probs=1
+            / self.fluxes.shape[-1]
+            * torch.ones_like(self.fluxes[..., 0, :].unsqueeze(2)),
         )
         self.AcceptRejectDist = Uniform(
             torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side, 1),
             torch.ones(self.num_tiles_per_side, self.num_tiles_per_side, 1),
+        )
+
+        self.accept = torch.zeros(
+            self.num_tiles_per_side,
+            self.num_tiles_per_side,
+            num_samples - 1,
+            dtype=torch.int,
         )
 
         self.has_run = False
@@ -399,26 +408,26 @@ class MHsampler(object):
         return counts, locs, fluxes
 
     def run(self):
-        for n in range(self.num_iters - 1):
+        locs_prev = self.locs[..., 0, :, :].unsqueeze(2)
+        fluxes_prev = self.fluxes[..., 0, :].unsqueeze(2)
+
+        for n in range(self.num_samples - 1):
+            print(n)
             component_mask = self.component_multinom.sample()
 
             # propose locs and fluxes
-            locs_proposed = self.locs[..., n, :, :].unsqueeze(2) * (
-                1 - component_mask.unsqueeze(-1)
-            ) + (
+            locs_proposed = locs_prev * (1 - component_mask.unsqueeze(-1)) + (
                 TruncatedDiagonalMVN(
-                    self.locs[..., n, :, :].unsqueeze(2),
+                    locs_prev,
                     self.locs_stdev,
                     self.locs_min,
                     self.locs_max,
                 ).sample()
                 * component_mask.unsqueeze(-1)
             )
-            fluxes_proposed = self.fluxes[..., n, :].unsqueeze(2) * (
-                1 - component_mask
-            ) + (
+            fluxes_proposed = fluxes_prev * (1 - component_mask) + (
                 TruncatedDiagonalMVN(
-                    self.fluxes[..., n, :].unsqueeze(2),
+                    fluxes_prev,
                     self.fluxes_stdev,
                     self.fluxes_min,
                     self.fluxes_max,
@@ -429,14 +438,14 @@ class MHsampler(object):
             # compute log numerator
             log_num_target = self.log_target(
                 self.tiled_image,
-                self.counts[..., n].unsqueeze(2),
+                self.counts[..., n + 1].unsqueeze(2),
                 locs_proposed,
                 fluxes_proposed,
             )
             log_num_qlocs = (
                 TruncatedDiagonalMVN(
                     locs_proposed, self.locs_stdev, self.locs_min, self.locs_max
-                ).log_prob(self.locs[..., n, :, :].unsqueeze(2))
+                ).log_prob(locs_prev)
                 * component_mask.unsqueeze(-1)
             ).sum([-2, -1])
             log_num_qfluxes = (
@@ -445,7 +454,7 @@ class MHsampler(object):
                     self.fluxes_stdev,
                     self.fluxes_min,
                     self.fluxes_max,
-                ).log_prob(self.fluxes[..., n, :].unsqueeze(2))
+                ).log_prob(fluxes_prev)
                 * component_mask
             ).sum(-1)
             log_numerator = log_num_target + log_num_qlocs + log_num_qfluxes
@@ -455,12 +464,12 @@ class MHsampler(object):
                 log_denom_target = self.log_target(
                     self.tiled_image,
                     self.counts[..., n].unsqueeze(2),
-                    self.locs[..., n, :, :].unsqueeze(2),
-                    self.fluxes[..., n, :].unsqueeze(2),
+                    locs_prev,
+                    fluxes_prev,
                 )
             log_denom_qlocs = (
                 TruncatedDiagonalMVN(
-                    self.locs[..., n, :, :].unsqueeze(2),
+                    locs_prev,
                     self.locs_stdev,
                     self.locs_min,
                     self.locs_max,
@@ -469,7 +478,7 @@ class MHsampler(object):
             ).sum([-2, -1])
             log_denom_qfluxes = (
                 TruncatedDiagonalMVN(
-                    self.fluxes[..., n, :].unsqueeze(2),
+                    fluxes_prev,
                     self.fluxes_stdev,
                     self.fluxes_min,
                     self.fluxes_max,
@@ -480,20 +489,24 @@ class MHsampler(object):
 
             alpha = (log_numerator - log_denominator).exp().clamp(max=1)
             prob = self.AcceptRejectDist.sample()
-            accept = prob <= alpha
+            self.accept[..., n] = prob <= alpha
 
-            accept_l = (accept).unsqueeze(-1).unsqueeze(-1)
-            self.locs[..., n + 1, :, :] = locs_proposed * (accept_l) + self.locs[
-                ..., n, :, :
-            ].unsqueeze(2) * (~accept_l)
+            accept_l = (self.accept[..., n]).unsqueeze(-1).unsqueeze(-1)
+            self.locs[..., n + 1, :, :] = locs_proposed * (accept_l) + locs_prev * (
+                1 - accept_l
+            )
+            locs_prev = self.locs[..., n + 1, :, :]
 
-            accept_f = (accept).unsqueeze(-1)
-            self.fluxes[..., n + 1, :] = fluxes_proposed * (accept_f) + self.fluxes[
-                ..., n, :
-            ].unsqueeze(2) * (~accept_f)
+            accept_f = (self.accept[..., n]).unsqueeze(-1)
+            self.fluxes[..., n + 1, :] = fluxes_proposed * (accept_f) + fluxes_prev * (
+                1 - accept_f
+            )
+            fluxes_prev = self.fluxes[..., n + 1, :]
 
             # cache denominator loglik for next iteration
-            log_denom_target = log_num_target * (accept) + log_denom_target * (~accept)
+            log_denom_target = log_num_target * (
+                self.accept[..., n]
+            ) + log_denom_target * (1 - self.accept[..., n])
 
         self.pruned_counts, self.pruned_locs, self.pruned_fluxes = self.prune(
             self.locs, self.fluxes
