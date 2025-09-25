@@ -18,6 +18,7 @@ class SMCsampler(object):
         ess_threshold_prop,
         resample_method,
         flux_detection_threshold,
+        locs_prune_boundary,
         max_smc_iters,
         print_every=5,
     ):
@@ -47,6 +48,8 @@ class SMCsampler(object):
         self.resample_method = resample_method
 
         self.flux_detection_threshold = flux_detection_threshold
+
+        self.locs_prune_boundary = locs_prune_boundary
 
         self.max_smc_iters = max_smc_iters
 
@@ -196,9 +199,15 @@ class SMCsampler(object):
         )
 
     def prune(self, locs, fluxes):
+        h_lower = 0 if "lower" in self.locs_prune_boundary else -torch.inf
+        h_upper = self.tile_dim if "upper" in self.locs_prune_boundary else torch.inf
+        w_lower = 0 if "left" in self.locs_prune_boundary else -torch.inf
+        w_upper = self.tile_dim if "right" in self.locs_prune_boundary else torch.inf
+
         mask = torch.all(
             torch.logical_and(
-                locs > 0, locs < torch.tensor((self.tile_dim, self.tile_dim))
+                locs > torch.tensor((h_lower, w_lower)),
+                locs < torch.tensor((h_upper, w_upper)),
             ),
             dim=-1,
         )
