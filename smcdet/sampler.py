@@ -199,10 +199,10 @@ class SMCsampler(object):
         )
 
     def prune(self, locs, fluxes):
-        h_lower = 0 if "lower" in self.locs_prune_boundary else -torch.inf
-        h_upper = self.tile_dim if "upper" in self.locs_prune_boundary else torch.inf
-        w_lower = 0 if "left" in self.locs_prune_boundary else -torch.inf
-        w_upper = self.tile_dim if "right" in self.locs_prune_boundary else torch.inf
+        h_lower = 0 if "h_lower" in self.locs_prune_boundary else -torch.inf
+        h_upper = self.tile_dim if "h_upper" in self.locs_prune_boundary else torch.inf
+        w_lower = 0 if "w_lower" in self.locs_prune_boundary else -torch.inf
+        w_upper = self.tile_dim if "w_upper" in self.locs_prune_boundary else torch.inf
 
         mask = torch.all(
             torch.logical_and(
