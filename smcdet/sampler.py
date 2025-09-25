@@ -21,6 +21,9 @@ class SMCsampler(object):
         locs_prune_boundary,
         max_smc_iters,
         print_every=5,
+        locs_cond=None,
+        fluxes_cond=None,
+        image_cond=None,
     ):
         self.image = image
         self.image_dim = image.shape[0]
@@ -55,6 +58,10 @@ class SMCsampler(object):
 
         self.print_every = print_every
 
+        self.locs_cond = locs_cond
+        self.fluxes_cond = fluxes_cond
+        self.image_cond = image_cond
+
         self.has_run = False
 
     def initialize(self):
@@ -74,7 +81,12 @@ class SMCsampler(object):
 
         # cache loglikelihood for tempering step
         self.loglik = self.ImageModel.loglikelihood(
-            self.tiled_image, self.locs, self.fluxes
+            self.tiled_image,
+            self.locs,
+            self.fluxes,
+            self.locs_cond,
+            self.fluxes_cond,
+            self.image_cond,
         )
 
         # initialize weights and normalizing constant
@@ -89,7 +101,9 @@ class SMCsampler(object):
 
     def log_target(self, data, counts, locs, fluxes, temperature):
         logprior = self.Prior.log_prob(counts, locs, fluxes)
-        loglik = self.ImageModel.loglikelihood(data, locs, fluxes)
+        loglik = self.ImageModel.loglikelihood(
+            data, locs, fluxes, self.locs_cond, self.fluxes_cond, self.image_cond
+        )
 
         return logprior + temperature.unsqueeze(-1) * loglik
 
@@ -101,7 +115,12 @@ class SMCsampler(object):
 
     def temper(self):
         self.loglik = self.ImageModel.loglikelihood(
-            self.tiled_image, self.locs, self.fluxes
+            self.tiled_image,
+            self.locs,
+            self.fluxes,
+            self.locs_cond,
+            self.fluxes_cond,
+            self.image_cond,
         )
         loglik = self.loglik.cpu()
 
@@ -152,13 +171,6 @@ class SMCsampler(object):
 
         resampled_index = resampled_index.clamp(min=0, max=self.num_catalogs - 1)
         self.counts = torch.gather(self.counts, -1, resampled_index)
-        self.fluxes = torch.gather(
-            self.fluxes,
-            2,
-            repeat(
-                resampled_index, "numH numW n -> numH numW n d", d=self.fluxes.shape[-1]
-            ),
-        )
         self.locs = torch.gather(
             self.locs,
             2,
@@ -169,6 +181,34 @@ class SMCsampler(object):
                 t=self.locs.shape[-1],
             ),
         )
+        if self.locs_cond is not None:
+            self.locs_cond = torch.gather(
+                self.locs_cond,
+                2,
+                repeat(
+                    resampled_index,
+                    "numH numW n -> numH numW n d t",
+                    d=self.locs.shape[-2],
+                    t=self.locs.shape[-1],
+                ),
+            )
+        self.fluxes = torch.gather(
+            self.fluxes,
+            2,
+            repeat(
+                resampled_index, "numH numW n -> numH numW n d", d=self.fluxes.shape[-1]
+            ),
+        )
+        if self.fluxes_cond is not None:
+            self.fluxes_cond = torch.gather(
+                self.fluxes_cond,
+                2,
+                repeat(
+                    resampled_index,
+                    "numH numW n -> numH numW n d",
+                    d=self.fluxes_cond.shape[-1],
+                ),
+            )
         self.weights = (1 / self.num_catalogs) * torch.ones_like(self.weights)
 
     def mutate(self):

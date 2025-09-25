@@ -156,7 +156,22 @@ class M71ImageModel(ImageModel):
             rate, (self.noise_additive + self.noise_multiplicative * rate).sqrt()
         ).sample()
 
-    def loglikelihood(self, tiled_image, locs, fluxes):
+    def loglikelihood(
+        self,
+        tiled_image,
+        locs,
+        fluxes,
+        locs_cond=None,
+        fluxes_cond=None,
+        image_cond=None,
+    ):
+        if locs_cond is not None:
+            locs = torch.cat((locs, locs_cond), dim=-2)
+        if fluxes_cond is not None:
+            fluxes = torch.cat((fluxes, fluxes_cond), dim=-1)
+        if image_cond is not None:
+            tiled_image = image_cond
+
         psf = self.psf(locs)
 
         rate = (

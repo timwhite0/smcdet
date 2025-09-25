@@ -77,14 +77,32 @@ class PointProcessPrior(object):
 
 class PoissonProcessPrior(PointProcessPrior):
     def __init__(
-        self, min_objects, max_objects, counts_rate, image_height, image_width, pad=0
+        self,
+        min_objects,
+        max_objects,
+        counts_rate,
+        image_height,
+        image_width,
+        pad,
+        padded_boundary=["h_lower", "h_upper", "w_lower", "w_upper"],
     ):
         self.min_objects = min_objects
         self.max_objects = max_objects
         self.counts_rate = counts_rate
         self.image_height = image_height
         self.image_width = image_width
-        self.pad = pad
+        self.h_lower = -torch.tensor(pad).float() if "h_lower" in padded_boundary else 0
+        self.h_upper = (
+            image_height + torch.tensor(pad).float()
+            if "h_upper" in padded_boundary
+            else image_height
+        )
+        self.w_lower = -torch.tensor(pad).float() if "w_lower" in padded_boundary else 0
+        self.w_upper = (
+            image_width + torch.tensor(pad).float()
+            if "w_upper" in padded_boundary
+            else image_width
+        )
         self.update_attrs()
 
     # Override to change count_prior to Poisson (but keep loc_prior the same)
@@ -92,12 +110,12 @@ class PoissonProcessPrior(PointProcessPrior):
         self.num_counts = self.max_objects - self.min_objects + 1
         self.count_prior = Poisson(
             self.counts_rate
-            * (self.image_height + 2 * self.pad)
-            * (self.image_width + 2 * self.pad)
+            * (self.h_upper - self.h_lower)
+            * (self.w_upper - self.w_lower)
         )
         self.loc_prior = Uniform(
-            (0 - self.pad) * torch.ones(2),
-            torch.tensor((self.image_height + self.pad, self.image_width + self.pad)),
+            torch.tensor((self.h_lower, self.w_lower)),
+            torch.tensor((self.h_upper, self.w_upper)),
         )
 
 
