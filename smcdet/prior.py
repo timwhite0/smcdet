@@ -6,20 +6,21 @@ from smcdet.distributions import DiscreteUniform, TruncatedPareto
 
 
 class PointProcessPrior(object):
-    def __init__(self, min_objects, max_objects, image_height, image_width, pad=0):
+    def __init__(self, min_objects, max_objects, h_lower, h_upper, w_lower, w_upper):
         self.min_objects = min_objects
         self.max_objects = max_objects
-        self.image_height = image_height
-        self.image_width = image_width
-        self.pad = pad
+        self.h_lower = torch.tensor(h_lower).float()
+        self.h_upper = torch.tensor(h_upper).float()
+        self.w_lower = torch.tensor(w_lower).float()
+        self.w_upper = torch.tensor(w_upper).float()
         self.update_attrs()
 
     def update_attrs(self):
         self.num_counts = self.max_objects - self.min_objects + 1
         self.count_prior = DiscreteUniform(self.min_objects, self.max_objects)
         self.loc_prior = Uniform(
-            (0 - self.pad) * torch.ones(2),
-            torch.tensor((self.image_height + self.pad, self.image_width + self.pad)),
+            torch.tensor((self.h_lower, self.w_lower)),
+            torch.tensor((self.h_upper, self.w_upper)),
         )
 
     def sample(
@@ -81,28 +82,18 @@ class PoissonProcessPrior(PointProcessPrior):
         min_objects,
         max_objects,
         counts_rate,
-        image_height,
-        image_width,
-        pad,
-        padded_boundary=["h_lower", "h_upper", "w_lower", "w_upper"],
+        h_lower,
+        h_upper,
+        w_lower,
+        w_upper,
     ):
         self.min_objects = min_objects
         self.max_objects = max_objects
         self.counts_rate = counts_rate
-        self.image_height = image_height
-        self.image_width = image_width
-        self.h_lower = -torch.tensor(pad).float() if "h_lower" in padded_boundary else 0
-        self.h_upper = (
-            image_height + torch.tensor(pad).float()
-            if "h_upper" in padded_boundary
-            else image_height
-        )
-        self.w_lower = -torch.tensor(pad).float() if "w_lower" in padded_boundary else 0
-        self.w_upper = (
-            image_width + torch.tensor(pad).float()
-            if "w_upper" in padded_boundary
-            else image_width
-        )
+        self.h_lower = torch.tensor(h_lower).float()
+        self.h_upper = torch.tensor(h_upper).float()
+        self.w_lower = torch.tensor(w_lower).float()
+        self.w_upper = torch.tensor(w_upper).float()
         self.update_attrs()
 
     # Override to change count_prior to Poisson (but keep loc_prior the same)
@@ -120,12 +111,13 @@ class PoissonProcessPrior(PointProcessPrior):
 
 
 class GeometricProcessPrior(PointProcessPrior):
-    def __init__(self, min_objects, max_objects, image_height, image_width, pad=0):
+    def __init__(self, min_objects, max_objects, h_lower, h_upper, w_lower, w_upper):
         self.min_objects = min_objects
         self.max_objects = max_objects
-        self.image_height = image_height
-        self.image_width = image_width
-        self.pad = pad
+        self.h_lower = torch.tensor(h_lower).float()
+        self.h_upper = torch.tensor(h_upper).float()
+        self.w_lower = torch.tensor(w_lower).float()
+        self.w_upper = torch.tensor(w_upper).float()
         self.update_attrs()
 
     # Override to change count_prior to Geometric (but keep loc_prior the same)
@@ -135,8 +127,8 @@ class GeometricProcessPrior(PointProcessPrior):
             1 - torch.exp(torch.tensor(-1.5))
         )  # see Feder et al 2020
         self.loc_prior = Uniform(
-            (0 - self.pad) * torch.ones(2),
-            torch.tensor((self.image_height + self.pad, self.image_width + self.pad)),
+            torch.tensor((self.h_lower, self.w_lower)),
+            torch.tensor((self.h_upper, self.w_upper)),
         )
 
 

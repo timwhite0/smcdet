@@ -10,29 +10,28 @@ class SMCsampler(object):
     def __init__(
         self,
         image,
-        tile_dim,
         Prior,
         ImageModel,
         MutationKernel,
         num_catalogs,
         ess_threshold_prop,
         resample_method,
-        flux_detection_threshold,
-        locs_prune_boundary,
         max_smc_iters,
+        prune_flux_lower,
+        prune_h_lower=-torch.inf,
+        prune_h_upper=torch.inf,
+        prune_w_lower=-torch.inf,
+        prune_w_upper=torch.inf,
         print_every=5,
         locs_cond=None,
         fluxes_cond=None,
-        image_cond=None,
     ):
         self.image = image
-        self.image_dim = image.shape[0]
+        self.image_height = image.shape[-2]
+        self.image_width = image.shape[-1]
 
-        self.tile_dim = tile_dim
-        self.num_tiles_per_side = self.image_dim // self.tile_dim
-        self.tiled_image = image.unfold(0, self.tile_dim, self.tile_dim).unfold(
-            1, self.tile_dim, self.tile_dim
-        )
+        assert image.shape[0] == image.shape[1]
+        self.num_tiles_per_side = image.shape[0]
 
         self.Prior = Prior
         self.ImageModel = ImageModel
@@ -50,9 +49,12 @@ class SMCsampler(object):
             )
         self.resample_method = resample_method
 
-        self.flux_detection_threshold = flux_detection_threshold
+        self.pruned_flux_lower = prune_flux_lower
 
-        self.locs_prune_boundary = locs_prune_boundary
+        self.prune_h_lower = prune_h_lower
+        self.prune_h_upper = prune_h_upper
+        self.prune_w_lower = prune_w_lower
+        self.prune_w_upper = prune_w_upper
 
         self.max_smc_iters = max_smc_iters
 
@@ -60,7 +62,6 @@ class SMCsampler(object):
 
         self.locs_cond = locs_cond
         self.fluxes_cond = fluxes_cond
-        self.image_cond = image_cond
 
         self.has_run = False
 
@@ -81,12 +82,11 @@ class SMCsampler(object):
 
         # cache loglikelihood for tempering step
         self.loglik = self.ImageModel.loglikelihood(
-            self.tiled_image,
+            self.image,
             self.locs,
             self.fluxes,
             self.locs_cond,
             self.fluxes_cond,
-            self.image_cond,
         )
 
         # initialize weights and normalizing constant
@@ -102,7 +102,7 @@ class SMCsampler(object):
     def log_target(self, data, counts, locs, fluxes, temperature):
         logprior = self.Prior.log_prob(counts, locs, fluxes)
         loglik = self.ImageModel.loglikelihood(
-            data, locs, fluxes, self.locs_cond, self.fluxes_cond, self.image_cond
+            data, locs, fluxes, self.locs_cond, self.fluxes_cond
         )
 
         return logprior + temperature.unsqueeze(-1) * loglik
@@ -115,12 +115,11 @@ class SMCsampler(object):
 
     def temper(self):
         self.loglik = self.ImageModel.loglikelihood(
-            self.tiled_image,
+            self.image,
             self.locs,
             self.fluxes,
             self.locs_cond,
             self.fluxes_cond,
-            self.image_cond,
         )
         loglik = self.loglik.cpu()
 
@@ -213,7 +212,7 @@ class SMCsampler(object):
 
     def mutate(self):
         self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
-            self.tiled_image,
+            self.image,
             self.counts,
             self.locs,
             self.fluxes,
@@ -239,19 +238,14 @@ class SMCsampler(object):
         )
 
     def prune(self, locs, fluxes):
-        h_lower = 0 if "h_lower" in self.locs_prune_boundary else -torch.inf
-        h_upper = self.tile_dim if "h_upper" in self.locs_prune_boundary else torch.inf
-        w_lower = 0 if "w_lower" in self.locs_prune_boundary else -torch.inf
-        w_upper = self.tile_dim if "w_upper" in self.locs_prune_boundary else torch.inf
-
         mask = torch.all(
             torch.logical_and(
-                locs > torch.tensor((h_lower, w_lower)),
-                locs < torch.tensor((h_upper, w_upper)),
+                locs > torch.tensor((self.prune_h_lower, self.prune_w_lower)),
+                locs < torch.tensor((self.prune_h_upper, self.prune_w_upper)),
             ),
             dim=-1,
         )
-        mask *= fluxes > self.flux_detection_threshold
+        mask *= fluxes > self.pruned_flux_lower
 
         counts = mask.sum(-1)
 

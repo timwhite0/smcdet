@@ -5,10 +5,21 @@ from torch.distributions import Normal, Poisson
 
 class ImageModel(object):
     def __init__(
-        self, image_height, image_width, background, psf_radius: int, psf_stdev=None
+        self,
+        h_lower,
+        h_upper,
+        w_lower,
+        w_upper,
+        background,
+        psf_radius: int,
+        psf_stdev=None,
     ):
-        self.image_height = image_height
-        self.image_width = image_width
+        self.h_lower = h_lower
+        self.h_upper = h_upper
+        self.w_lower = w_lower
+        self.w_upper = w_upper
+        self.image_height = h_upper - h_lower
+        self.image_width = w_upper - w_lower
         self.background = background
         self.psf_radius = psf_radius
         self.psf_stdev = psf_stdev
@@ -34,11 +45,11 @@ class ImageModel(object):
             self.psf_patch, "dimH dimW t -> 1 1 1 1 dimH dimW t"
         )
 
-        h_in_bounds = (pixel_coords[..., 0] >= 0) & (
-            pixel_coords[..., 0] < self.image_height
+        h_in_bounds = (pixel_coords[..., 0] >= self.h_lower) & (
+            pixel_coords[..., 0] < self.h_upper
         )
-        w_in_bounds = (pixel_coords[..., 1] >= 0) & (
-            pixel_coords[..., 1] < self.image_width
+        w_in_bounds = (pixel_coords[..., 1] >= self.w_lower) & (
+            pixel_coords[..., 1] < self.w_upper
         )
         coords_in_bounds = h_in_bounds & w_in_bounds
 
@@ -52,12 +63,16 @@ class ImageModel(object):
             valid_psf_vals = self._compute_normalized_psf(valid_r)
 
             pixel_coords_int = pixel_coords.long()
-            target_h = pixel_coords_int[
+            target_h_global = pixel_coords_int[
                 h_tile, w_tile, n_idx, d_idx, h_patch, w_patch, 0
             ]
-            target_w = pixel_coords_int[
+            target_w_global = pixel_coords_int[
                 h_tile, w_tile, n_idx, d_idx, h_patch, w_patch, 1
             ]
+
+            # Convert global coordinates to local image coordinates
+            target_h = target_h_global - int(self.h_lower)
+            target_w = target_w_global - int(self.w_lower)
 
             linear_indices = (
                 h_tile * numW * self.image_height * self.image_width * n * d
@@ -82,7 +97,7 @@ class ImageModel(object):
         ) + self.background
         return Poisson(rate).sample()
 
-    def loglikelihood(self, tiled_image, locs, fluxes):
+    def loglikelihood(self, image, locs, fluxes):
         psf = self.psf(locs)
         rate = (psf * rearrange(fluxes, "numH numW n d -> numH numW 1 1 n d")).sum(
             -1
@@ -90,12 +105,10 @@ class ImageModel(object):
 
         mask = rate > 50000
 
-        loglik_poisson = Poisson(rate).log_prob(tiled_image.unsqueeze(-1))
+        loglik_poisson = Poisson(rate).log_prob(image.unsqueeze(-1))
 
         if mask.sum() > 0:
-            loglik_normal = Normal(rate, rate.sqrt()).log_prob(
-                tiled_image.unsqueeze(-1)
-            )
+            loglik_normal = Normal(rate, rate.sqrt()).log_prob(image.unsqueeze(-1))
             loglik = torch.where(mask, loglik_normal, loglik_poisson).sum([-2, -3])
             return loglik
         else:
@@ -158,19 +171,16 @@ class M71ImageModel(ImageModel):
 
     def loglikelihood(
         self,
-        tiled_image,
+        image,
         locs,
         fluxes,
         locs_cond=None,
         fluxes_cond=None,
-        image_cond=None,
     ):
         if locs_cond is not None:
             locs = torch.cat((locs, locs_cond), dim=-2)
         if fluxes_cond is not None:
             fluxes = torch.cat((fluxes, fluxes_cond), dim=-1)
-        if image_cond is not None:
-            tiled_image = image_cond
 
         psf = self.psf(locs)
 
@@ -185,7 +195,7 @@ class M71ImageModel(ImageModel):
             Normal(
                 rate, (self.noise_additive + self.noise_multiplicative * rate).sqrt()
             )
-            .log_prob(tiled_image.unsqueeze(-1))
+            .log_prob(image.unsqueeze(-1))
             .sum([-2, -3])
         )
 
