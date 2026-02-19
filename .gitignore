@@ -9,5 +9,21 @@ experiments/**/results/smc*/
 experiments/**/*.out
 debug.py
 **/tmp**
-experiments/**/results/figures/
+**/figures/
 **/line_profiler_results.txt
+
+# LaTeX build artifacts
+manuscript/*.aux
+manuscript/*.bbl
+manuscript/*.blg
+manuscript/*.log
+manuscript/*.out
+manuscript/*.pdf
+manuscript/*.synctex.gz
+manuscript/*.brf
+manuscript/*.toc
+
+# Springer Nature template files
+manuscript/sn-jnl.cls
+manuscript/sn-mathphys-num.bst
+manuscript/bst/
