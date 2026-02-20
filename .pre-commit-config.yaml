@@ -1,20 +1,18 @@
 repos:
-- repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v4.6.0
-  hooks:
-  - id: check-yaml
-  - id: end-of-file-fixer
-  - id: trailing-whitespace
-- repo: https://github.com/psf/black
-  rev: 24.8.0
-  hooks:
-  - id: black
-- repo: https://github.com/PyCQA/flake8
-  rev: 7.1.1
-  hooks:
-  - id: flake8
-    args: ["--max-line-length=100", "--ignore=E741,W503,E402,E203"]
-- repo: https://github.com/PyCQA/isort
-  rev: 5.13.2
-  hooks:
-    - id: isort
+  - repo: local
+    hooks:
+      - id: uv-lock
+        name: uv lock
+        entry: uv lock
+        language: system
+        pass_filenames: false
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format
+        language: system
+        types: [python]
+      - id: ruff-lint
+        name: ruff lint
+        entry: ruff check --fix
+        language: system
+        types: [python]
