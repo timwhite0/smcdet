@@ -24,6 +24,4 @@ manuscript/*.brf
 manuscript/*.toc
 
 # Springer Nature template files
-manuscript/sn-jnl.cls
-manuscript/sn-mathphys-num.bst
-manuscript/bst/
+manuscript/*.bst
