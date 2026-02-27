@@ -6,9 +6,9 @@ Our motivating scientific example is the detection and [deblending](https://www.
 
 To use the code in this repository, please follow these steps:
 
-1. Install [poetry](https://python-poetry.org/docs/)
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 ```
-curl -sSL https://install.python-poetry.org | python3 -
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 2. Clone `smcdet`
@@ -16,14 +16,14 @@ curl -sSL https://install.python-poetry.org | python3 -
 git clone git@github.com:timwhite0/smcdet.git
 ```
 
-3. Create a virtual environment with all required dependencies
+3. Create and activate a virtual environment
 ```
 cd smcdet
-export POETRY_VIRTUALENVS_IN_PROJECT=1
-poetry install
+uv venv .venv
+source .venv/bin/activate
 ```
 
-4. Activate the environment (run `poetry env activate` first to ensure that the following command is correct)
+4. Install dependencies
 ```
-source .venv/bin/activate
+uv sync
 ```

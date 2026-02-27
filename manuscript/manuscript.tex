@@ -1,0 +1,878 @@
+%Version 3.1 December 2024
+% See section 11 of the User Manual for version history
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                                 %%
+%% Please do not use \input{...} to include other tex files.       %%
+%% Submit your LaTeX manuscript as one .tex document.              %%
+%%                                                                 %%
+%% All additional figures and files should be attached             %%
+%% separately and not embedded in the \TeX\ document itself.       %%
+%%                                                                 %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%\documentclass[referee,sn-basic]{sn-jnl}% referee option is meant for double line spacing
+
+%%=======================================================%%
+%% to print line numbers in the margin use lineno option %%
+%%=======================================================%%
+
+%%\documentclass[lineno,pdflatex,sn-basic]{sn-jnl}% Basic Springer Nature Reference Style/Chemistry Reference Style
+
+%%=========================================================================================%%
+%% the documentclass is set to pdflatex as default. You can delete it if not appropriate.  %%
+%%=========================================================================================%%
+
+%%\documentclass[sn-basic]{sn-jnl}% Basic Springer Nature Reference Style/Chemistry Reference Style
+
+%%Note: the following reference styles support Namedate and Numbered referencing. By default the style follows the most common style. To switch between the options you can add or remove Numbered in the optional parenthesis.
+%%The option is available for: sn-basic.bst, sn-chicago.bst%
+
+%%\documentclass[pdflatex,sn-nature]{sn-jnl}% Style for submissions to Nature Portfolio journals
+%%\documentclass[pdflatex,sn-basic]{sn-jnl}% Basic Springer Nature Reference Style/Chemistry Reference Style
+\documentclass[pdflatex,sn-mathphys-num]{sn-jnl}% Math and Physical Sciences Numbered Reference Style
+%%\documentclass[pdflatex,sn-mathphys-ay]{sn-jnl}% Math and Physical Sciences Author Year Reference Style
+%%\documentclass[pdflatex,sn-aps]{sn-jnl}% American Physical Society (APS) Reference Style
+%%\documentclass[pdflatex,sn-vancouver-num]{sn-jnl}% Vancouver Numbered Reference Style
+%%\documentclass[pdflatex,sn-vancouver-ay]{sn-jnl}% Vancouver Author Year Reference Style
+%%\documentclass[pdflatex,sn-apa]{sn-jnl}% APA Reference Style
+%%\documentclass[pdflatex,sn-chicago]{sn-jnl}% Chicago-based Humanities Reference Style
+
+%%%% Standard Packages
+%%<additional latex packages if required can be included here>
+
+\usepackage{graphicx}%
+\usepackage{multirow}%
+\usepackage{amsmath,amssymb,amsfonts}%
+\usepackage{amsthm}%
+\usepackage{mathrsfs}%
+\usepackage[title]{appendix}%
+\usepackage{xcolor}%
+\usepackage{textcomp}%
+\usepackage{manyfoot}%
+\usepackage{booktabs}%
+\usepackage{algorithm}%
+\usepackage{algorithmicx}%
+\usepackage[noend]{algpseudocode}%
+\usepackage{listings}%
+%%%%
+
+%%%% Additional packages and commands
+\usepackage{xfrac}
+\usepackage{mathtools}
+\usepackage{anyfontsize}
+\usepackage{bookmark}
+\newcommand{\mathds}[1]{\mathbb{#1}}
+\usepackage{cleveref}
+\crefname{figure}{Figure}{Figures}
+\Crefname{figure}{Figure}{Figures}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage{subcaption}
+\renewcommand{\sectionautorefname}{Section}
+\newcommand{\algorithmautorefname}{Algorithm}
+\renewcommand{\figurename}{Figure}
+\renewcommand{\algorithmicrequire}{\textbf{Inputs:}}
+\renewcommand{\algorithmicensure}{\textbf{Return:}}
+\newcommand{\algorithmspace}{\vspace{3pt}}
+\newcommand{\padvert}{\thinspace \vert \thinspace}
+
+\usepackage{tikz, pgfplots}
+\usetikzlibrary{calc,positioning,external,shapes.geometric,bending,fit}
+% \tikzexternalize
+% \pgfplotsset{compat=1.18}
+
+\definecolor{steelblue}{HTML}{4682B4}
+\definecolor{burlywood}{HTML}{DEB887}
+\definecolor{indianred}{HTML}{CD5C5C}
+\definecolor{mediumseagreen}{HTML}{3CB371}
+\definecolor{sienna}{HTML}{A9561E}
+\definecolor{grassgreen}{HTML}{3F9B0B}
+
+\newcommand{\jeff}[1]{\todo[inline, color=blue!30]{#1 \mbox{--Jeff}}}
+\newcommand{\tim}[1]{\todo[inline, color=red!30]{#1 \mbox{--Tim}}}
+%%%%
+
+%%%%%=============================================================================%%%%
+%%%%  Remarks: This template is provided to aid authors with the preparation
+%%%%  of original research articles intended for submission to journals published
+%%%%  by Springer Nature. The guidance has been prepared in partnership with
+%%%%  production teams to conform to Springer Nature technical requirements.
+%%%%  Editorial and presentation requirements differ among journal portfolios and
+%%%%  research disciplines. You may find sections in this template are irrelevant
+%%%%  to your work and are empowered to omit any such section if allowed by the
+%%%%  journal you intend to submit to. The submission guidelines and policies
+%%%%  of the journal take precedence. A detailed User Manual is available in the
+%%%%  template package for technical guidance.
+%%%%%=============================================================================%%%%
+
+%% as per the requirement new theorem styles can be included as shown below
+\theoremstyle{thmstyleone}%
+\newtheorem{theorem}{Theorem}%  meant for continuous numbers
+%%\newtheorem{theorem}{Theorem}[section]% meant for sectionwise numbers
+%% optional argument [theorem] produces theorem numbering sequence instead of independent numbers for Proposition
+\newtheorem{proposition}[theorem]{Proposition}%
+%%\newtheorem{proposition}{Proposition}% to get separate numbers for theorem and proposition etc.
+
+\theoremstyle{thmstyletwo}%
+\newtheorem{example}{Example}%
+\newtheorem{remark}{Remark}%
+
+\theoremstyle{thmstylethree}%
+\newtheorem{definition}{Definition}%
+
+\raggedbottom
+%%\unnumbered% uncomment this for unnumbered level heads
+
+\begin{document}
+
+\title[SMC for object detection]{Sequential Monte Carlo Samplers for Probabilistic Object Detection in Images}
+%%=============================================================%%
+%% GivenName	-> \fnm{Joergen W.}
+%% Particle	-> \spfx{van der} -> surname prefix
+%% FamilyName	-> \sur{Ploeg}
+%% Suffix	-> \sfx{IV}
+%% \author*[1,2]{\fnm{Joergen W.} \spfx{van der} \sur{Ploeg}
+%%  \sfx{IV}}\email{iauthor@gmail.com}
+%%=============================================================%%
+
+% \author*[1]{\fnm{Tim} \sur{White}}\email{twhit@umich.edu}
+
+% \author[1]{\fnm{Jeffrey} \sur{Regier}}\email{regier@umich.edu}
+
+% \affil[1]{\orgdiv{Department of Statistics}, \orgname{University of Michigan}, \orgaddress{\city{Ann Arbor}, \postcode{48109}, \state{Michigan}, \country{United States}}}
+
+%%==================================%%
+%% Sample for unstructured abstract %%
+%%==================================%%
+
+\abstract{Object detection is a fundamental image analysis task that is relevant to many scientific disciplines. Although scientists typically possess some knowledge of the shapes, sizes, and features of the objects in an image, inferring these properties from pixels is challenging when the objects overlap or exhibit low contrast with the background. The Bayesian paradigm is well suited to this task because it enables probabilistic inference of the number of imaged objects and allows practitioners to incorporate prior knowledge about their properties. However, most existing Bayesian object detection methods rely on transdimensional sampling algorithms such as reversible jump Markov chain Monte Carlo, which are often challenging to design and incompatible with modern parallel computing capabilities. We propose count-stratified sequential Monte Carlo (CS-SMC), a parallelizable probabilistic approach to detecting objects in crowded scenes. Given an image, CS-SMC generates posterior samples of object counts, positions, and properties by running several fixed-dimensional SMC samplers in parallel. The samples and marginal likelihood estimates produced by these SMC samplers can be combined with a prior distribution over object counts to perform posterior inference over sets of objects. In a case study involving astronomical images of crowded starfields, CS-SMC provides well-calibrated estimates of stellar counts, fluxes, and locations. These results suggest that our algorithm is a compelling alternative to existing object detection methods in settings where a well-specified parametric object model is available.}
+
+\keywords{interacting particle systems, marked point processes, posterior sampling, likelihood tempering, transdimensional inference, Bayesian model choice}
+
+%%\pacs[JEL Classification]{D8, H51}
+
+%%\pacs[MSC Classification]{35A01, 65L10, 65L12, 65L20, 65L70}
+
+\maketitle
+
+\section{Introduction} \label{smc:introduction}
+
+Scientists detect objects in images to advance their understanding of complex physical and biological systems. For example, earth scientists detect trees, crop parcels, and maritime debris in satellite images to monitor land cover and identify evidence of pollution \citep{graesser2017detection, brandt2020unexpectedly, basu2021development, yang2022deep}. Biologists detect cells in microscopy images to study their proliferation in tissues and track the progression of diseases \citep{wollman2007, usaj2016}. Astronomers detect stars and galaxies in astronomical images to analyze the large-scale structure of the universe and assess cosmological theories \citep{sevilla2021dark, abdurro2022seventeenth}.
+
+These examples belong to a class of object detection tasks in which each image depicts multiple small, potentially overlapping objects whose shapes are well-modeled by parametric functions and whose features are challenging to distinguish due to the variance or bias of the observed pixel intensities. Inferring the latent characteristics of the imaged objects in this setting is a transdimensional, ill-posed inverse problem, as the image could plausibly be explained by many different configurations of object counts, positions, and properties \citep{dashti2013bayesian}.
+
+Many existing detection algorithms operate directly on the observed pixel intensities without incorporating domain knowledge about the objects' latent properties. Examples include classical techniques such as the watershed algorithm \citep{szeliski2022computer}, procedures based on Markov random fields \citep{li1994markov, quattoni2004conditional}, and modern methods based on convolutional neural networks \citep{redmon2016yolo, he2017maskrcnn}. These algorithms typically struggle in the highly ambiguous setting described above compared to methods which leverage experts' prior understanding of the imaged objects \citep{cootes1995active, he2011object}.
+
+An alternative approach casts the number, positions, and properties of the imaged objects as a spatial marked point process, a model that describes a random set of positions in a two-dimensional region and a random set of properties, or marks, associated with each position \citep{gelfand2018bayesian}. The marks may be treated as observed random variables or latent random variables \citep{descombes2002marked, verdie2014detecting, pham2016efficient, ghanta2018latent}; in this work, we take the latter perspective. Under this framework, object detection can be interpreted as a probabilistic task in which one aims to infer the posterior distribution of latent object counts, positions, and properties conditional on the observed pixel intensities. This approach provides a natural way to characterize uncertainty in noisy, crowded images, one that has proved more successful than non-probabilistic alternatives in many applications \citep{rue1999bayesian, vo2010joint, arteta2013learning}.
+
+Directly evaluating the density of this posterior distribution is infeasible due to the intractability of its normalizing constant. Thus, most existing approaches to probabilistic object detection either optimize a variational approximation to this posterior \citep{greff2019multi, liu2023variational} or, more commonly, sample from it using a transdimensional Markov chain Monte Carlo (MCMC) algorithm \citep{green1995reversible, stephens2000bayesian, shi2002birth}. The former requires optimization of a potentially nonconvex objective, and the quality of the resulting posterior approximation may be difficult to assess. The latter requires transdimensional sampling mechanisms for adding, subtracting, splitting, and merging objects, which are typically challenging to design and implement efficiently.
+
+As an alternative, we propose a novel algorithm for probabilistic object detection based on sequential Monte Carlo (SMC) samplers \citep{chopin2020, dai2022invitation}. Our approach, which is a specialized version of an SMC-based model comparison procedure proposed by \cite{zhou2016toward}, tackles the transdimensional task of object detection by combining the outputs of several fixed-dimensional SMC samplers, one for each plausible object count. This procedure is efficient since the collection of fixed-dimensional samplers can be run in parallel. It is also convenient since it enables transdimensional inference over sets of objects without requiring transdimensional sampling.
+
+\autoref{smc:background} introduces the notation of our inference setting and formally motivates our proposed algorithm. In \autoref{smc:background:smcsamplers}, we describe the class of sequential Monte Carlo methods on which our algorithm is based, and in \autoref{smc:bayesianmodelchoice}, we highlight the shortcomings of existing probabilistic object detection methods as solutions to the Bayesian model choice problem. We posit a probabilistic model of latent object properties and observed pixel intensities in \autoref{smc:imagesandcats}. With this model in mind, we present our method, count-stratified sequential Monte Carlo (CS-SMC), in \autoref{smc:cssmc}. In \autoref{smc:crowdedstarfields}, we assess the accuracy and calibration of CS-SMC in a case study involving astronomical images of crowded starfields. We conclude in \autoref{smc:discussion} by discussing several limitations of our work and outlining an extension.
+
+
+
+\section{Background} \label{smc:background}
+
+\subsection{Sequential Monte Carlo Samplers} \label{smc:background:smcsamplers}
+
+The probabilistic approach to object detection requires one to infer, for each plausible number of imaged objects, the posterior distribution $p(z \padvert x)$ of latent random positions and properties $z \in \mathcal{Z}$ conditional on observed pixel intensities $x \in \mathcal{X}$. We assume that the joint density $p(x, z) = p(z) p(x \padvert z)$ can be computed for any $z$. We also assume that $z$ is high-dimensional and $p(z \padvert x)$ is multimodal, so the marginal likelihood $p(x) = \int p(x, z) dz$ is intractable and $p(z \padvert x)$ cannot be directly evaluated or sampled from. As such, it is common to approximate the posterior using Monte Carlo methods such as Markov chain Monte Carlo (MCMC), parallel tempering (PT), or importance sampling (IS) \citep{brooks2011handbook, geyer1991markov, neal2001annealed}. These algorithms generate samples that are approximately distributed according to the posterior and can be used to estimate expectations $E_{p(z \padvert x)}[f(z)] = \int f(z) p(z \padvert x) dz$ for functionals $f:\mathcal{Z} \rightarrow \mathbb{R}$. However, MCMC algorithms typically cannot be parallelized and do not enable straightforward estimation of the marginal likelihood $p(x)$, while naive implementations of PT and IS often result in low effective sample sizes \citep{dai2022invitation}.
+
+Sequential Monte Carlo (SMC) methods are an increasingly popular class of algorithms for approximating distributions and their normalizing constants, and they alleviate many of the shortcomings of MCMC, PT, and IS \citep{chopin2020}. An extension of sequential importance sampling \citep{naesseth2019elements}, SMC approximates a sequence of target distributions with empirical distributions formed by weighted samples, or particles. SMC algorithms were initially proposed as particle filters for settings in which the sequence of target distributions is indexed by time \citep{gordon1993novel, carpenter1999improved, doucet2001introduction}. However, they have subsequently been generalized to arbitrary sequences of auxiliary distributions that bridge from a tractable initial distribution to a single target distribution. In this setting, they are referred to as sequential Monte Carlo samplers \citep{del2006sequential}. When the target distribution is the posterior $p(z \padvert x)$, a common choice of auxiliary densities is the so-called likelihood-tempered sequence $p_{\tau_t}(z \padvert x) \propto p(z) p(x \padvert z)^{\tau_t}$, where $t$ indexes a sequence of $T$ temperatures $0 = \tau_0 < \cdots < \tau_T = 1$. Thus, $p_0(z \padvert x)$ coincides with the prior $p(z)$ and $p_1(z \padvert x)$ coincides with the posterior $p(z \padvert x)$ \citep{dai2022invitation}.
+
+\autoref{algorithm:smc} presents a generic likelihood-tempered SMC sampler. Given a realization of $x$, the sampler generates $N$ particles from the prior and iteratively resamples, mutates, and reweights them while incrementing the iteration counter $t$ and gradually increasing the temperature $\tau_t$. The weight update depends on the Markov transition kernel used to mutate the particles and cannot be independently designed, but the algorithm permits considerable flexibility in the design of the resampling, mutation, and tempering steps. For these, we follow the recommendations of \cite{chopin2020}.
+% Specifically, in iteration $t$, we use multinomial resampling to resample the particles based on their weights at time $t{-}1$, we mutate the particles using several steps of a Metropolis-Hastings kernel $M_{\tau_{t-1}}(z_{t-1}, dz_t)$ that leaves invariant $p_{\tau_{t-1}}(z_{t-1} \mid x)$, and we select the next temperature $\tau_t$ via an adaptive scheme that maintains a constant $\chi^2$-divergence between consecutive targets.
+
+The weighted particles $\{W_t^n, z_t^n\}_{n=1}^N$ returned after the final iteration form an empirical posterior approximation $\widehat{p}(z \padvert x) = \sum_{n=1}^N W_t^n \delta_{z_t^n}(dz_t)$ that converges to $p(z \padvert x)$ as $N \rightarrow \infty$ \citep{chopin2020}. Consequently, these weighted particles provide consistent Monte Carlo estimates $\frac{1}{N} \sum_{n=1}^N W_t^n f(z_t^n)$ of expectations $E_{p(z \padvert x)}[f(z)]$ of suitable functionals $f$. The algorithm also yields, at no additional computational cost, an unbiased and consistent estimate of the marginal likelihood $\widehat{p}(x) = \prod_{r=0}^t \frac{1}{N} \sum_{n=1}^N w_r^n$. The favorable properties of this estimate and the ease with which it is obtained represent a major benefit of SMC samplers that is not shared by MCMC methods.
+
+
+
+\begin{algorithm}[t]
+\small
+\caption{\small Likelihood-tempered sequential Monte Carlo sampler (\texttt{SMCsampler})} \label{algorithm:smc}
+\begin{algorithmic}
+\Require realization of observed random variables $x$; prior $p(z)$; likelihood $p(x \padvert z)$; \\
+\qquad\quad number of particles $N$; resampling method \texttt{resample}; \\
+\qquad\quad MCMC kernel $M_\tau(z, dz)$ that leaves invariant $p_\tau(z \padvert x) \propto p(z) p(x \padvert z)^\tau$ ($\tau \in [0,1]$).
+
+\algorithmspace
+
+\State Initialize iteration $t \leftarrow -1$, temperature $\tau_t \leftarrow 0$.
+
+\algorithmspace
+
+\While{$\tau_t < 1$}
+    \State Increment $t \leftarrow t + 1$.
+
+    \algorithmspace
+
+    \If{$t = 0$}
+        \State Initialize particles $z_t^{1:N} \overset{\text{iid}}{\sim} p(z)$.
+    \Else
+        \State Resample $z_{t-1}^{1:N} \leftarrow \texttt{resample}(W_{t-1}^{1:N}, z_{t-1}^{1:N})$.
+
+        \algorithmspace
+
+        \State Sample $z_t^n \sim M_{\tau_{t-1}}(z_{t-1}^n, dz_t)$ for $n \in 1{:}N$.
+    \EndIf
+
+    \algorithmspace
+
+    \State Update temperature $\tau_t \leftarrow \tau_{t-1} + \delta$, where $\delta \in [0, 1{-}\tau_{t-1}]$.
+
+    \algorithmspace
+
+    \State Compute unnormalized weight $w_t^n \leftarrow p(x \padvert z_t^n)^{\tau_t}$ for $n \in 1{:}N$.
+
+    \algorithmspace
+
+    \State Compute normalized weight $W_t^n \leftarrow w_t^n / \sum_{l=1}^N w_t^l$ for $n \in 1{:}N$.
+\EndWhile
+
+\algorithmspace
+
+\Ensure posterior approximation $\widehat{p}(z \padvert x) = \sum_{n=1}^N W_t^n \delta_{z_t^n} (dz_t)$; \\
+
+\algorithmspace
+
+\qquad\quad\enspace estimated marginal likelihood $\widehat{p}(x) = \prod_{r=0}^t \frac{1}{N} \sum_{n=1}^N w_r^n$.
+\end{algorithmic}
+\end{algorithm}
+
+
+
+\subsection{Bayesian Model Choice} \label{smc:bayesianmodelchoice}
+
+The SMC sampler in \autoref{algorithm:smc} operates in a fixed-dimensional latent space $\mathcal{Z}$. However, object detection is a transdimensional inference task in which the number of unknown parameters is also unknown \citep{gelfand1994bayesian, hastie2012model}. In such problems of model choice (also known as model comparison), one aims to characterize and compare candidate models in a countable set $\mathcal{S}$. To do so, one must infer both an unknown model indicator $s \in \mathcal{S}$ and latent random variables $z_{(s)} \in \mathcal{Z}_{(s)}$ corresponding to model $s$, which need not be of equal dimension for all elements of $\mathcal{S}$. In the setting introduced in \autoref{smc:background:smcsamplers}, this corresponds to inferring the posterior distribution
+\begin{equation*}
+    p(s, z_{(s)} \padvert x) = \frac{p(s) p(z_{(s)} \padvert s) p(x \padvert z_{(s)}, s)}{p(x)}
+\end{equation*}
+over the latent space $\bigcup_{s \in \mathcal{S}} (\{s\} \cup \mathcal{Z}_{(s)})$, where $p(s)$ denotes a prior density over model indicators $s \in \mathcal{S}$.
+
+Birth-death MCMC (BDMCMC) \citep{stephens2000bayesian, shi2002birth} and reversible jump MCMC (RJMCMC) \citep{green1995reversible} are well-known Monte Carlo methods for sampling from $p(s, z_{(s)} \padvert x)$, with the latter being more general and more widely adopted than the former. These algorithms are conceptually appealing because they enable direct inference based on samples $\{s^n, z^n_{(s^n)}\}_{n=1}^N$ which reside in the extended latent space defined above. Thus, one can use RJMCMC or BDMCMC samples to directly approximate posterior model probabilities $p(s \padvert x)$ with Monte Carlo estimates $\sum_{n=1}^N \mathds{1}\{s^n = s\}$. To obtain these samples, however, these algorithms require transition kernels that propose both within-model and between-model moves — i.e., jumps from $\{s^n, z_{(s^n)}^n\}$ to $\{s^{\tilde{n}}, z_{(s^{\tilde{n}})}^{\tilde{n}}\}$ where $s^n$ and $s^{\tilde{n}}$ may or may not be equal. These two move types — particularly the latter — require careful design and substantial tuning to avoid slow mixing of the resulting Markov chain, and for some model classes it may not be natural or plausible to construct efficient between-model proposals \citep{jasra2007population}. Also, since RJMCMC and BDMCMC are transdimensional extensions of fixed-dimensional MCMC and thus generate samples sequentially rather than in parallel, they do not naturally leverage the parallel computing capabilities of GPUs \citep{anderson2013massively}.
+
+Previous works have demonstrated that the mixing behavior and sample quality of RJMCMC can be improved by combining it with SMC samplers \citep{jasra2008interacting}, parallel tempering \citep{jasra2007population}, or annealed importance sampling \citep{karagiannis2013annealed}. However, these approaches do not eliminate the algorithm's reliance on transdimensional sampling. Motivated by this, \cite{zhou2016toward} propose an alternative approach to Bayesian model choice that avoids transdimensional sampling by running separate SMC samplers on each fixed-dimensional latent subspace $\{s\} \cup \mathcal{Z}_{(s)}$ for model $s \in \mathcal{S}$. The unbiased and consistent marginal likelihood estimates $\widehat{p}(x \padvert s)$ provided by the $\vert \mathcal{S} \vert$ samplers can be used to compare the models. For example, Zhou et al. compute Bayes factors \citep{kass1995bayes}, or ratios of these marginal likelihood estimates, to compare pairs of candidate models.
+
+The procedure proposed by Zhou et al. is highly parallelizable: the fixed-dimensional SMC samplers can be run in parallel, and as described in \autoref{smc:background:smcsamplers}, each sampler generates and evaluates particles in parallel. Also, whereas the Markov chain generated by RJMCMC or BDMCMC is unlikely to ``reach'' models that are unlikely under the posterior $p(s, z_{(s)} \padvert x)$, the SMC-based algorithm can approximate the model-specific posterior $p(z_{(s)} \padvert x, s)$ for each $s \in \mathcal{S}$ to a desired level of accuracy determined by the number of particles allocated to the corresponding sampler. In \autoref{smc:smcforobjdet}, we develop a specialized version of this procedure for probabilistic object detection.
+
+
+
+% \subsection{Divide-and-conquer sequential Monte Carlo} \label{smc:dcsmc}
+
+% \begin{itemize}
+%     \item Divide-and-conquer sequential Monte Carlo (DC-SMC) methods are a class of SMC algorithms that operate on trees, rather than sequences, of auxiliary distributions  \citep{lindsten2017divide, kuntz2024divide}.
+%     \item Whereas SMC samplers resample, mutate, and reweight a single collection of weighted particles, DC-SMC samplers performs the same operations in parallel on multiple such collections at each level of a tree of distributions.
+%     \item We present the DC-SMC algorithm in \autoref{algorithm:dcsmc}. I will discuss the details of this algorithm at greater length in the first full draft of this manuscript.
+% \end{itemize}
+
+% \begin{algorithm}[t]
+% \small
+% \caption{\small\texttt{dc\_smc}($u$) for $u \in \mathbb{T}$ (divide-and-conquer SMC recursion)} \label{algorithm:dcsmc}
+% \begin{algorithmic}
+% \Require ...
+% \State \vspace{0.25in}
+% \Ensure ...
+% \end{algorithmic}
+% \end{algorithm}
+
+
+
+\section{Sequential Monte Carlo for Object Detection} \label{smc:smcforobjdet}
+
+\subsection{Images and Padded Object Catalogs} \label{smc:imagesandcats}
+
+Object detection is an instance of the model choice problem introduced in \autoref{smc:bayesianmodelchoice}. Let the observed random variables $x$ denote the pixel intensities of an $H{\times}W$-pixel image, which may be either real-valued or integer-valued. Let the discrete model indicator $s \in \mathcal{S}$ denote the number of objects that contribute at least $I$ units of intensity to a region spanning at least $P$ pixels, where $I$ and $P$ are application-informed thresholds and $\mathcal{S}$ denotes a countable collection of plausible object counts. We define $\mathcal{S} \coloneqq \{s_{\min},...,s_{\max}\}$, where $s_{\min}$ and $s_{\max}$ are application-informed minimum and maximum object counts.
+
+For each object count $s \in \mathcal{S}$, let $z_{(s)} \coloneqq \{\ell_{(s)}^j, f_{(s)}^j\}_{j=1}^s$ denote the latent random properties of the $s$ objects. Let $\ell_{(s)}^j$ denote the location of the center of the $j$th object associated with model $s$ in continuous two-dimensional coordinates, and let $f_{(s)}^j$ denote its other features. For example, $f_{(s)}^j$ might include the intrinsic brightness of the $j$th object or a collection of parameters describing its shape. We distinguish the objects' locations from their other properties to emphasize that a subspace of the latent space $\mathcal{Z}_{(s)}$ is spatial in nature for any object detection task, regardless of how the other features are defined. Hereafter, we refer to $s \cup z_{(s)}$ as a catalog of latent random variables describing the $s$ objects associated with model $s \in \mathcal{S}$.
+
+As in \autoref{smc:bayesianmodelchoice}, we aim to infer the posterior distribution $p(s, z_{(s)} \padvert x)$. A prerequisite to this objective is the specification of a joint probabilistic model
+\begin{equation*} \label{eq:jointmodel}
+    p(s, z_{(s)}) p(x \padvert z_{(s)}, s) = p(s) \left[\prod_{j=1}^s p(\ell_{(s)}^j, f_{(s)}^j \padvert s)\right] \left[\prod_{h=1}^H \prod_{w=1}^W p(x_{hw} \padvert z_{(s)}, s)\right]
+\end{equation*}
+that relates the catalogs $s \cup z_{(s)}$ to the image $x$ for each candidate object count $s$. Here, $p(s, z_{(s)})$ is a spatial marked point process comprising a prior over object counts and, conditional on a realization of $s$, a prior over the latent properties of $s$ objects. Given a catalog $s \cup z_{(s)}$, $p(x \padvert z_{(s)}, s)$ denotes the joint distribution of the observed pixel intensities, which we view as a conditional likelihood function of $z_{(s)}$ and $s$. The support of the object count prior $p(s)$ should contain $\mathcal{S}$ and can be either bounded or unbounded above. Otherwise, the specification of the model is unconstrained and should be application-informed. In \autoref{smc:crowdedstarfields}, we discuss suitable prior and likelihood choices for analyzing astronomical images.
+
+To account for the possibility that objects whose centers lie outside the boundary of the image $x$ contribute nontrivial intensity to the outermost image pixels, we allow the spatial subspace of each $\mathcal{Z}_{(s)}$ to extend beyond the boundary of $x$. Thus, we refer to each $\mathcal{Z}_{(s)}$ as a padded latent space, and we write it as a partition $\mathcal{Z}_{(s)} = \mathcal{Z}_{(s)}^- \cup \mathcal{Z}_{(s)}^+$ comprising an unpadded latent space $\mathcal{Z}_{(s)}^-$ and latent padding $\mathcal{Z}_{(s)}^+$. Defining a positive latent padding width is necessary when processing images in which some of the object centers fall outside the image boundary, as setting it to zero would likely result in incorrect duplicate detections just inside the boundary. In \autoref{fig:exampleimage}, we illustrate the distinction between these unpadded and padded latent spaces for a synthetic astronomical image and catalog.
+
+\begin{figure}[t]
+    \centering
+    \begin{tikzpicture}
+        \node (exampleimage) {\includegraphics[width=0.5\textwidth]{figures/m71synthetic_manyimages/m71synth_examplecatalog.png}};
+        \node at ([xshift=40pt, yshift=-20pt] exampleimage.north east) {\large $\textcolor{sienna}{\mathcal{Z}_{(s)}^{\textcolor{white}{+}}} = \textcolor{grassgreen}{\mathcal{Z}_{(s)}^-} \cup \mathcal{Z}_{(s)}^+$};
+        \node at ([xshift=-40pt, yshift=-20pt] exampleimage.north west) {\large $\textcolor{white}{\mathcal{Z} = \mathcal{Z}^- \cup \mathcal{Z}^+}$};
+    \end{tikzpicture}
+    \caption{A synthetic 8$\times$8-pixel astronomical image. The locations of the five stars in the catalog that produced the image are marked in gold. The locations from a representative posterior catalog with four stars are marked in blue. The padded latent space $\mathcal{Z}_{(s)}$ (brown) for a model with $s$ stars is the union of the unpadded latent space $\mathcal{Z}_{(s)}^-$ (green) and the latent padding $\mathcal{Z}_{(s)}^+$. For the posterior catalog depicted here, $s = 4$.}
+    \label{fig:exampleimage}
+\end{figure}
+
+
+
+
+
+\subsection{Count-Stratified Sequential Monte Carlo} \label{smc:cssmc}
+
+In the setting of \autoref{smc:imagesandcats}, the SMC-based procedure from \autoref{smc:bayesianmodelchoice} produces, for each object count $s \in \mathcal{S}$, weighted posterior samples of the locations and features of $s$ objects in the padded latent space $\mathcal{Z}_{(s)}$, as well as an estimate $\widehat{p}(x \padvert s)$ of the marginal likelihood of the model with $s$ objects. While \cite{zhou2016toward} primarily evaluate the procedure based on the accuracy and variability of the marginal likelihood estimates, we propose to use both outputs to generate particles (i.e., catalogs, in the setting of \autoref{smc:imagesandcats}) with various object counts from the posterior $p(s, z_{(s)} \padvert x)$. To do so, we first combine the marginal likelihood estimates with the object count prior to estimate the posterior count probability
+\begin{equation*}
+    \widehat{p}(s \padvert x) = \frac{p(s) \widehat{p}(x \padvert s)}{\sum_{\tilde{s} \in \mathcal{S}} p(\tilde{s}) \widehat{p}(x \padvert \tilde{s})}
+\end{equation*}
+for each $s \in \mathcal{S}$. The resulting collection of estimated posterior count probabilities defines a discrete distribution over $\mathcal{S}$. Then, we leverage the decomposition $p(s, z_{(s)} \padvert x) = p(s \padvert x) p(z_{(s)} \padvert x, s)$ of the joint posterior by iteratively sampling an object count $s \sim \widehat{p}(s \padvert x)$ and, given $s$, object properties $z_{(s)} \sim \widehat{p}(z_{(s)} \padvert x, s)$. We formalize this procedure, which we call count-stratified sequential Monte Carlo (CS-SMC), in \autoref{algorithm:cs-smc}.
+
+
+
+\begin{algorithm}[t]
+\small
+\caption{Count-stratified sequential Monte Carlo (\texttt{CS-SMC})} \label{algorithm:cs-smc}
+\begin{algorithmic}
+\Require image $x$; candidate object counts $\mathcal{S} \coloneqq \{s_{\min}, ..., s_{\max}\}$; object count prior $p(s)$; \\
+\qquad\quad padded latent space $\mathcal{Z}_{(s)} = \mathcal{Z}_{(s)}^- \cup \mathcal{Z}_{(s)}^+$ for $s \in \mathcal{S}$ (see \autoref{fig:exampleimage}); \\
+\qquad\quad object properties prior $p(z_{(s)} \padvert s)$ and likelihood $p(x \padvert z_{(s)}, s)$ for $s \in \mathcal{S}$; \\
+\qquad\quad number of catalogs per object count $N$; resampling method \texttt{resample}; \\
+\qquad\quad MCMC kernel $M_\tau(z_{(s)}, dz_{(s)})$ for $s \in \mathcal{S}$.
+
+\algorithmspace
+\algorithmspace
+
+\For{object count $s \in \mathcal{S}$ (in parallel)}
+
+\State $\widehat{p}(z_{(s)} \padvert x, s)$, \enspace $\widehat{p}(x \padvert s)$ \thinspace $\leftarrow \texttt{SMCsampler}(x, \enspace p(z_{(s)} \padvert s), \enspace p(x \padvert z_{(s)}, s),$ \\
+\hspace{170pt}$N, \enspace \texttt{resample}, \enspace M_\tau(z_{(s)}, dz_{(s)}))$.
+\EndFor
+
+\algorithmspace
+\algorithmspace
+
+\State Estimate posterior count probability $\widehat{p}(s \padvert x) = \frac{p(s) \widehat{p}(x \padvert s)}{\sum_{\tilde{s} \in \mathcal{S}} p(\tilde{s}) \widehat{p}(x \padvert \tilde{s})}$ for $s \in \mathcal{S}$.
+
+\algorithmspace
+\algorithmspace
+
+\State Sample object count $s^n \sim \widehat{p}(s \padvert x)$ and object properties $z_{(s^n)}^n \sim \widehat{p}(z_{(s^n)} \mid x, s^n)$ for $n \in 1{:}N$.
+
+\algorithmspace
+\algorithmspace
+
+\Ensure posterior approximation $\widehat{p}(s, z_{(s)} \padvert x) = \frac{1}{N} \sum_{n=1}^N \delta_{(s^n, z_{(s^n)}^n)} (ds, dz_{(s)})$.
+\end{algorithmic}
+\end{algorithm}
+
+
+
+CS-SMC outputs an $N$-catalog empirical approximation $\widehat{p}(s, z_{(s)} \padvert x)$ of the posterior distribution over the padded latent space $\bigcup_{s \in \mathcal{S}} (\{s\} \cup \mathcal{Z}_{(s)})$. In \autoref{algorithm:cs-smc}, we use $N$ to denote both the number of catalogs that form this posterior approximation and the number of catalogs generated by the count-specific SMC samplers, but in practice one could use a different value of $N$ for each of these. Other than this choice of $N$, CS-SMC requires no additional tuning decisions beyond those made for the count-specific SMC samplers.
+
+For some detection tasks, one might be interested in characterizing only objects whose centers lie within the image boundary. For example, if one cannot process a large image due to computational constraints and must analyze many subregions of the image separately, they would want to avoid making duplicate detections in regions that belong to the latent padding of one subregion and the unpadded latent space of another. To accommodate this, one can ``prune'' any posterior catalog $s \cup z_{(s)}$ generated by CS-SMC by discarding detected objects in the latent padding $\mathcal{Z}_{(s)}^+$ and retaining only those in the unpadded latent space $\mathcal{Z}_{(s)}^-$. This amounts to implicitly marginalizing out $s^+ \cup z_{(s^+)}^+$, which in this context are nuisance parameters, from $s \cup z_{(s)}$. We omit this potential final step from \autoref{algorithm:cs-smc}, but we utilize it in \autoref{smc:crowdedstarfields}.
+
+The quality of the posterior approximation $\widehat{p}(s, z_{(s)} \padvert x)$ produced by CS-SMC depends on the accuracy of both the estimated marginal likelihoods $\widehat{p}(x \padvert s)$ and the count-specific posterior approximations $\widehat{p}(z_{(s)} \padvert x, s)$. Both quantities are consistent for each object count $s \in \mathcal{S}$, meaning that $\widehat{p}(x \padvert s) \rightarrow p(x \padvert s)$ and $\widehat{p}(z_{(s)} \padvert x, s) \rightarrow p(z_{(s)} \padvert x, s)$ as $N \rightarrow \infty$. However, characterizing the theoretical properties of $\widehat{p}(s, z_{(s)} \padvert x)$ — namely, its convergence rate and the conditions on $\mathcal{S}$ under which it is consistent — remains an open problem, and one that will be explored in future work.
+
+
+
+% For each candidate object count $s \in \mathcal{S}$, we run \autoref{algorithm:smc} and obtain an empirical approximation of the object property posterior and the marginal likelihood estimate.
+
+% We can then use Bayes' rule to estimate $\widehat{p}(s \padvert x)$ for each $s$.
+
+% Finally, if we sample in succession from $\widehat{p}(s \padvert x)$ and $\widehat{p}(z_{(s)} \padvert x, s)$, we obtain catalogs $s \cup z_{(s)}$ that are approximately distributed according to the joint posterior. In Appendix B, we prove this result and characterize the statistical properties of the approximation.
+
+% We formalize this algorithm, which we call count-stratified sequential Monte Carlo (CS-SMC), in \autoref{algorithm:cs-smc}.
+
+% We find that CS-SMC is slow when $x$ is large or $\vert \mathcal{S} \vert$ is large. However, we envision that it could be run for many small images, possibly in parallel. In datasets comprising adjacent images, it may be advantageous to prune detections in the latent padding. Fortunately, this can be performed via straightforward marginalization.
+
+
+%
+
+
+
+% \subsection{Tree of tile-based auxiliary distributions} \label{smc:tiledbasedauxdist}
+
+% \begin{itemize}
+%     \item It may be computationally intensive to run the count-stratified SMC sampler from \autoref{smc:cssmc} to generate posterior catalogs for large images with many objects. However, this sampler can be implemented in parallel over many subregions, or tiles, of an image. In the first full draft of this manuscript, I will describe how both the image and latent space can be partitioned to accommodate this procedure.
+%     \item Motivated by this insight, we construct a tree of tile-based posterior distributions that is compatible with the divide-and-conquer SMC algorithm from \autoref{smc:dcsmc}. We display this tree of auxiliary distributions in \autoref{fig:tree}.
+% \end{itemize}
+
+% \begin{figure}
+%     \centering
+% \noindent\makebox[\textwidth]{
+% \begin{tikzpicture}
+    % % NODES
+    % \node (tiledimage) {\includegraphics[width=1.25in]{figures/figure1a.png}};
+
+    % \node (quadrants) [right=0.1in of tiledimage] {\includegraphics[width=1.25in]{figures/figure1b.png}};
+
+    % \node (halves) [above=0.1in of quadrants] {\includegraphics[width=1.25in]{figures/figure1c.png}};
+
+    % \node (paddedwhole) [above=0.1in of halves] {\includegraphics[width=1.25in]{figures/figure1d.png}};
+
+    % \node (tree11) [right=0.1in of quadrants] {
+    % $\textcolor{steelblue}{p(\breve{z}_{(1)} \padvert x_{(1)})}$
+    % };
+    % \node (tree12) [right=0.1in of tree11] {
+    % $\textcolor{burlywood}{p(\breve{z}_{(2)} \padvert x_{(2)})}$
+    % };
+    % \node (tree13) [right=0.1in of tree12] {
+    % $\textcolor{indianred}{p(\breve{z}_{(3)} \padvert x_{(3)})}$
+    % };
+    % \node (tree14) [right=0.1in of tree13] {
+    % $\textcolor{mediumseagreen}{p(\breve{z}_{(4)} \padvert x_{(4)})}$
+    % };
+    % \coordinate (midpoint1) at ($(tree11.north)!0.5!(tree12.north)$);
+    % \coordinate (midpoint2) at ($(tree13.north)!0.5!(tree14.north)$);
+    % \node (tree21) at (halves.east -| midpoint1) {
+    % $\textcolor{steelblue}{p(\breve{z}_{(1:2)} \padvert x_{(1:2)})}$
+    % };
+    % \node (tree22) at (halves.east -| midpoint2) {
+    % $\textcolor{indianred}{p(\breve{z}_{(1:2)} \padvert x_{(1:2)})}$
+    % };
+    % \coordinate (midpoint3) at ($(tree21.north)!0.5!(tree22.north)$);
+    % \node (tree31) at (paddedwhole.east -| midpoint3) {
+    % $\textcolor{steelblue}{p(\breve{z}_{(1:4)} \padvert x_{(1:4)})}$
+    % };
+
+    % % LINES
+    % \draw[->, very thick, shorten <=-0.25cm] (tiledimage.east) to (quadrants.west);
+    % \draw[->, very thick] (quadrants.north) to (halves.south);
+    % \draw[->, very thick] (halves.north) to (paddedwhole.south);
+    % \draw[->, very thick, transform canvas={xshift=-0.1cm}] (tree11.north) to (tree21.south);
+    % \draw[->, very thick, transform canvas={xshift=0.1cm}] (tree12.north) to (tree21.south);
+    % \draw[->, very thick, transform canvas={xshift=-0.1cm}] (tree13.north) to (tree22.south);
+    % \draw[->, very thick, transform canvas={xshift=0.1cm}] (tree14.north) to (tree22.south);
+    % \draw[->, very thick, transform canvas={xshift=-0.1cm}] (tree21.north) to (tree31.south);
+    % \draw[->, very thick, transform canvas={xshift=0.1cm}] (tree22.north) to (tree31.south);
+    % \end{tikzpicture}}
+    % \caption{Tree of tile-based auxiliary distributions for a synthetic 16$\times$16 pixel astronomical image partitioned into four tiles.}
+    %     \label{fig:tree}
+% \end{figure}
+
+
+
+% \subsection{Divide-and-detect sequential Monte Carlo} \label{smc:ddsmc}
+
+% \begin{itemize}
+%     \item In this section, we describe how the count-stratified SMC sampler from \autoref{smc:cssmc} can recursively construct weighted catalog approximations of each auxiliary posterior distribution in the tree from \autoref{smc:tiledbasedauxdist}.
+%     \item This recursive routine is detailed in \autoref{algorithm:recursion}. The full algorithm, which we call divide-and-detect SMC (DD-SMC), is presented in \autoref{algorithm:dd-smc}.
+%     \item In the first full draft of this manuscript, I will prove that DD-SMC is a special case of divide-and-conquer SMC and discuss several practical considerations regarding its implementation.
+% \end{itemize}
+
+% \begin{algorithm}[t]
+% \small
+% \caption{\small\texttt{dd\_smc}($u$) for $u \in \mathbb{T}$ (divide-and-detect SMC recursion)} \label{algorithm:recursion}
+% \begin{algorithmic}
+% \Require ...
+% \State \vspace{0.25in}
+% \Ensure ...
+% \Require image or subimage $x_{(u)}$; latent space $\breve{\mathcal{Z}}_{(u)} = \mathcal{Z}_{(u)} \cup \mathcal{Z}^+_{(u)}$; \\ \qquad\quad prior $p(\breve{z}_{(u)})$; likelihood $p(x_{(u)} \padvert \breve{z}_{(u)})$; \\ \qquad\quad target $\pi_\tau(\breve{z}_{(u)} \padvert x_{(u)}) \propto p(\breve{z}_{(u)}) p(x_{(u)} \padvert \breve{z}_{(u)})^\tau$ for $\tau \in [0,1]$; \\ \qquad\quad MCMC kernel $M_\tau(\breve{z}_{(u)}, d\breve{z}_{(u)})$ that leaves invariant $\pi_\tau(\breve{z}_{(u)} \padvert x_{(u)})$; \\ \qquad\quad number of catalogs $N$; tile subroutine \texttt{tile\_sampler}; \\ \qquad\quad resampling method \texttt{resample}; merging method \texttt{merge}. \vspace{0.1cm}
+
+% \If{$u$ is a leaf}
+%     \State $\{W_{(u)}^n, \breve{z}_{(u)}^n\}_{n=1}^N \leftarrow \texttt{tile\_sampler}(N, x_{(u)}, \breve{\mathcal{Z}}_{(u)})$.
+
+% \Else
+%     \State Partition $x_{(u)} = \bigsqcup_{v \in \mathcal{C}(u)} x_{(v)}$.
+
+%     \State Partition $\breve{\mathcal{Z}}_{(u)} = \bigcup_{v \in \mathcal{C}(u)} \breve{\mathcal{Z}}_{(v)}$.
+
+%     \For{$v \in \mathcal{C}(u)$}
+%         \State $\{W_{(v)}^n, \breve{z}_{(v)}^n\}_{n=1}^N \leftarrow \texttt{divide\_and\_conquer}(v)$.
+%         \State $\{\breve{z}_{(v)}^n\}_{n=1}^N \leftarrow \texttt{resample}(\{\{\breve{z}_{(v)}^n\}_{n=1}^N, W_{(v)}^n\}_{n=1}^N)$.
+%     \EndFor
+
+%     \State Initialize step $t \leftarrow -1$, temperature $\tau_t \leftarrow 0$.
+
+%     \While{$\tau_t < 1$}
+%         \State Increment $t \leftarrow t+1$.
+
+%         \If{$t = 0$}
+%             \State Initialize catalogs $\breve{z}_t^{1:N} \leftarrow \texttt{merge}(\{\breve{z}_{(v)}^{1:N}\}_{v \in \mathcal{C}(u)})$,
+
+%             \qquad\qquad\qquad\enspace\thinspace unnormalized weights $w_t^{1:N} \leftarrow 1$,
+
+%             \qquad\qquad\qquad\enspace\thinspace normalized weights $W_t^{1:N} \leftarrow \frac{1}{N}$.
+
+%         \Else
+%             \State Resample $\{\breve{z}_{t-1}^n\}_{n=1}^N \leftarrow \texttt{resample}(\{\breve{z}_{t-1}^n\}_{n=1}^N, \{W_{t-1}^n\}_{n=1}^N)$.
+%             \State Reset $W_{t-1}^n \leftarrow \frac{1}{N}$ for $n \in \{1,...,N\}$.
+%             \State Sample $\breve{z}_t^n \sim M_{\tau_{t-1}}(\breve{z}_{t-1}^n, d\breve{z})$ for $n \in \{1,...,N\}$.
+%         \EndIf
+
+%         \State Update $\tau_t \leftarrow \tau_{t-1} + \delta$, where $\delta \in [0, 1-\tau_{t-1}]$.
+
+%         \State Compute for $n \in \{1,...,N\}$:
+
+%         \qquad $w_t^n \leftarrow p(x_{(u)} \padvert \breve{z}_t^n)^{\tau_t - \tau_{t-1}}$,
+
+%         \qquad $W_t^n \leftarrow w_t^n / \sum_n w_t^n$.
+%     \EndWhile
+% \EndIf
+
+% \Ensure Weighted catalogs $\{W_t^n, \breve{z}_t^n\}_{n=1}^N$ approximating $\pi(\breve{z}_{(u)} \padvert x_{(u)}) \coloneqq \pi_1(\breve{z}_{(u)} \padvert x_{(u)})$.
+% \end{algorithmic}
+% \end{algorithm}
+
+
+
+% \begin{algorithm}[t]
+% \small
+% \caption{\small Divide-and-detect sequential Monte Carlo (DD-SMC)} \label{algorithm:dd-smc}
+% \begin{algorithmic}
+% \Require ...
+% \State \vspace{0.25in}
+% \Ensure ...
+% \Require image $x_{(\text{img})}$ of dimension $D {\times} D$; tile side length $R$; \\ \qquad\quad latent space $\breve{\mathcal{Z}}_{(\text{img})} = \mathcal{Z}_{(\text{img})} \cup \mathcal{Z}^+_{(\text{img})}$ (see section \autoref{smc:methods} of text); \\ \qquad\quad number of catalogs per tile $N$; maximum count per tile $s_{\max}$; \\ \qquad\quad prior
+
+% \State Number of tiles per side $T = D/R$
+% \State Number of levels $L = 2 \log_2 T$
+% \State Partition image into tiles: $x = \bigsqcup_{a=1}^D \bigsqcup_{b=1}^D x^{(a,b)}$
+% \State Partition the latent space: $\breve{\mathcal{Z}} = \bigcup_{a=1}^D \bigcup_{b=1}^D \breve{\mathcal{Z}}^{(a,b)}$, where $\breve{\mathcal{Z}}^{(a,b)} = \breve{\mathcal{Z}}^{(a,b)} \cup \breve{\mathcal{Z}}^{(a,b)+}$
+% \State \texttt{CS-SMC}($x^{(a,b)}, \breve{\mathcal{Z}}^{(a,b)}, p(\breve{z}^{(a,b)}), p(x^{(a,b)} \padvert \breve{z}^{(a,b)}), \texttt{resample}, M_\tau(\breve{z}^{(a,b)}, d\breve{z}^{(a,b)}), s_{\max}, N / (s_{\max} + 1)$)
+
+% \Ensure
+% \end{algorithmic}
+% \end{algorithm}
+
+
+
+
+
+\section{Case Study: Crowded Starfields} \label{smc:crowdedstarfields}
+
+\subsection{Statistical Model} \label{smc:m71model}
+
+We expect CS-SMC's conceptual and empirical advantages over non-probabilistic alternatives to be most apparent when applied to highly ambiguous images, such as those that have noisy pixel intensities or depict many visually overlapping objects. Astronomical images of crowded starfields are a prime example of this image type. In images captured by the powerful telescopes of modern astronomical surveys, many stars and galaxies are too faint to distinguish from the background, and more than half of all detectable light sources are ``blends'', or visually overlapping sources \citep{bosch2018hsc, melchior2021challenge, sanchez2021effects}.
+
+In this section, we demonstrate that CS-SMC is an accurate and well-calibrated method for detecting and characterizing stars in such images, a task known as astronomical cataloging. Given an ${H{\times}W}$ astronomical image $x$, we infer the posterior distribution of the number of stars (i.e., source count) $s$, the location $\ell_{(s)}^j$ of each star, and the brightness (i.e., flux) $f_{(s)}^j$ of each star.
+
+We posit a prior and likelihood similar to previous works in the astronomical cataloging literature \citep{brewer2013probabilistic, portillo2017improved, feder2020multiband}. We model the source count in the padded latent space as
+\begin{equation*}
+    s \sim \text{Poisson}\bigl(\mu \cdot (H + 2\varepsilon) \cdot (W + 2\varepsilon)\bigr),
+\end{equation*}
+where $\mu$ denotes the mean source count per pixel and $\varepsilon$ denotes the width of the latent padding introduced in \autoref{smc:imagesandcats}.
+
+Given $s$, we model the locations of the $s$ stars as
+\begin{equation*}
+    \ell_{(s)}^1,...,\ell_{(s)}^s \overset{\text{iid}}{\sim} \text{Uniform}\bigl([0{-}\varepsilon,H{+}\varepsilon] {\times} [0{-}\varepsilon,W{+}\varepsilon]\bigr)
+\end{equation*}
+and their fluxes as
+\begin{equation*}
+    f_{(s)}^1,...,f_{(s)}^s \overset{\text{iid}}{\sim} \text{TruncatedPareto}(\alpha, f_{\min}, f_{\max}).
+\end{equation*}
+Here, $\alpha$, $f_{\min}$, and $f_{\max}$ are the slope, lower bound, and upper bound of an upper-truncated Pareto distribution \citep{aban2006parameter}. The fluxes are in nanomaggies, units utilized by the Sloan Digital Sky Survey (SDSS) \citep{an2008galactic}.
+
+Given the source count $s$ and the set $z_{(s)}$ of locations and fluxes, the observed pixel intensities are typically modeled as Poisson, as they measure the number of photons that enter the telescope and hit each pixel. However, since the variance of these photon counts may be larger than the mean due to the read noise, or intrinsic error, of the telescope, we use the Gaussian approximation to the Poisson — i.e., for pixel $(h,w)$,
+\begin{equation*}
+    x_{hw} \padvert z_{(s)}, s \sim \text{Gaussian}\bigl(\lambda_{hw}(z_{(s)}), \enspace \sigma_0^2 + \eta \thinspace \lambda_{hw}(z_{(s)})\bigr),
+\end{equation*}
+where $\sigma_0^2$ and $\eta$ account for read noise and $\lambda_{hw}(z_{(s)}) = B + \sum_{j=1}^s f_{(s)}^j \phi(\ell_{(s)}^j)$. Here, $B$ is the background intensity of the image, which we model as constant, and $\phi(\cdot)$ is the point spread function (PSF), a deterministic function that describes how the light from a stellar point source spreads across pixels. We use the SDSS PSF, which is a six-parameter mixture distribution comprising two Gaussians and a power-law \citep{xin2018study}. The pixel intensities are in analog-digital units.
+
+We conduct two sets of experiments to assess the accuracy and calibration with which CS-SMC detects and ``deblends'' stars.\footnote{Code to reproduce both sets of experiments is publicly available at \url{https://github.com/timwhite0/smc\_object\_detection}.} First, we simulate 1,000 $8{\times}8$-pixel images from the above model to evaluate CS-SMC's performance in a regime where the model is correctly specified. Second, we run CS-SMC on 332 $8{\times}8$-pixel cutouts of the Messier 71 (M71) globular cluster, a relatively sparse cluster of stars that has been imaged by both the Sloan Digital Sky Survey (SDSS) and the Hubble Space Telescope \citep{sarajedini2007acs, an2008galactic}. We run CS-SMC on $r$-band SDSS images and compare the resulting inferences to the Hubble catalog, which we treat as the ground truth since Hubble has a higher resolution than the SDSS telescope.\footnote{We filter the Hubble catalog to stars with an F606W-band magnitude smaller than 24 because those with magnitudes larger than 24 are essentially undetectable by any existing cataloging algorithm. Smaller magnitudes correspond to brighter stars. In SDSS, magnitude equals 22.5 - $\log_{10}$ flux.} \autoref{fig:appdx:m71_targetregion} displays the $1489{\times}2048$-pixel field imaged by SDSS (run 6895, camera column 3, field 52), the region imaged by Hubble, and the subregion from which we extract 332 non-adjacent $8{\times}8$-pixel cutouts.
+
+In both sets of experiments, we treat $\mu$, $\alpha$, $f_{\min}$, $f_{\max}$, $\sigma_0^2$, $\eta$, and the PSF parameters as fixed and compute their maximum likelihood estimates using the Hubble catalog and SDSS image from a held-out $100{\times}100$-pixel region of M71. We obtain $\widehat{\mu} = 0.030$, $\widehat{\alpha} = 0.214$, $\widehat{f}_{\min} = 0.252$, $\widehat{f}_{\max} = 1804.679$, $\widehat{\sigma}_0^2 \approx 0$, and $\widehat{\eta} = 1.940$. We use an estimate of the background intensity supplied by SDSS, and we set $\varepsilon=1$. We compare CS-SMC's performance to that of Source Extractor, a deterministic astronomical cataloging program based on peak-finding and thresholding \citep{bertin1996sextractor, barbary2016sep}. We tune Source Extractor's parameters via grid search using the held-out M71 region mentioned above.
+
+The maximum likelihood estimate $\widehat{\mu}$ of the source count prior's rate parameter implies that the $8{\times}8$-pixel cutouts (each padded by a 1-pixel-wide border) contain approximately three stars on average and fewer than seven stars in most cases. Accordingly, we set $s_{\min} = 0$ and $s_{\max} = 6$ in \autoref{algorithm:cs-smc}. In the count-specific SMC samplers, we resample the particles in every iteration $t$ based on their weights from iteration $t{-}1$, we mutate them using several steps of a Metropolis-Hastings kernel that leaves invariant $p_{\tau_{t-1}}(z_{t-1} \mid x)$, and we select the temperature $\tau_t$ via an adaptive scheme that maintains a constant $\chi^2$-divergence between consecutive targets \citep{chopin2020}.
+
+In both sets of experiments, running CS-SMC on one $8{\times}8$-pixel image took between 20 and 60 seconds on one NVIDIA GeForce RTX 2080 Ti GPU (\autoref{fig:appdx:m71synth_runtime}, \autoref{fig:appdx:m71_runtime}).
+
+
+
+\subsection{Results for Synthetic Images} \label{smc:resultssynthetic}
+
+\autoref{fig:m71synth_repeatedruns} demonstrates that, for a particular image with three stars, the estimated marginal log-likelihoods $\log \widehat{p}(x \padvert s)$ and corresponding posterior count probabilities $\widehat{p}(s \padvert x)$ vary less across independent runs of CS-SMC when each count-specific SMC sampler utilizes more catalogs per source count $N$ and more Metropolis-Hastings mutation steps. Accordingly, we set $N = 10,000$ and use 100 Metropolis-Hastings steps when applying CS-SMC to our dataset of 1,000 synthetic images. \autoref{fig:appdx:m71synth_repeatedruns} repeats this simulation study for an image with one star, and the results suggest that using fewer catalogs and Metropolis-Hastings steps may be sufficient in sparse images.
+
+\begin{figure}[t]
+\centering
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71synthetic_repeatedruns/m71synthetic_repeatedruns_logpx2.png}
+\end{minipage}
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71synthetic_repeatedruns/m71synthetic_repeatedruns_countprob2.png}
+\end{minipage}
+\caption[Synthetic images: Variability across runs for an image with three stars]{Top: Variability of marginal log-likelihood estimates $\log \widehat{p}(x \padvert s)$ ($s \in \{2,...,6\}$) across 100 independent runs of count-stratified SMC on a synthetic $8{\times}8$-pixel image with true source count $s = 3$. These 100 runs were repeated for nine combinations of the number of catalogs per source count $N$ (columns) and the number of MCMC iterations used in the mutation stage of SMC (colors/markers). The bars in each panel indicate the middle 90\% of estimates. Bottom: Variability of the corresponding posterior source count probabilities $\widehat{p}(s \padvert x)$ ($s \in \{2,...,6\}$) across the 100 independent runs for each combination of $N$ and \# MCMC iterations.}
+\label{fig:m71synth_repeatedruns}
+\end{figure}
+
+
+
+CS-SMC produces well-calibrated estimates of stellar counts. In contrast, Source Extractor struggles to deblend overlapping light sources, as it tends to identify high-intensity regions as a single bright star instead of several faint stars. The left panel of \autoref{fig:m71synth_confmats} compares the true source count of each image to inferred source counts from 10,000 CS-SMC catalogs, while the right panel compares the true source counts to Source Extractor's point estimates. These are so-called pruned source counts, obtained for each image by marginalizing out detected stars in the latent padding as described in \autoref{smc:cssmc}. The confusion matrix of true versus estimated source counts in the left panel is approximately symmetric; it would be perfectly symmetric if CS-SMC's empirical posterior approximation were exact \citep{regier2025inprep}.
+
+
+
+\begin{figure}[t!]
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_confmat_smc_samples.png}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_confmat_sep.png}
+\end{subfigure}
+\caption[Synthetic images: True versus estimated source counts]{True versus estimated source counts in 1,000 synthetic $8{\times}8$-pixel images. Estimated source counts are 10,000 count-stratified SMC catalogs per image (left) and the Source Extractor point estimate for each image (right).}
+\label{fig:m71synth_confmats}
+\vspace{10pt}
+\begin{subfigure}[t]{0.32\textwidth}
+    \includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_totalflux_intervals_smc.png}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_totalflux_coverage_smc.png}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_totalflux_sep.png}
+\end{subfigure}
+\caption[Synthetic images: Accuracy and calibration of estimated total intrinsic flux]{Accuracy and calibration of estimated total intrinsic flux (in nanomaggies) for 1,000 synthetic $8{\times}8$-pixel images. Left: Nominal versus empirical frequentist coverage of CS-SMC credible intervals. Center: 90\% CS-SMC credible intervals, with intervals covering the true total intrinsic flux in blue and those failing to cover the truth in gold. Right: True total intrinsic flux versus Source Extractor point estimates.}
+\label{fig:m71synth_totalflux}
+\end{figure}
+
+Our algorithm also produces well-calibrated estimates of total fluxes, obtained for each image by summing the fluxes of all stars located in the unpadded latent space for each true or inferred catalog. We analyze the total flux of each catalog instead of the individual stellar fluxes it comprises, since a star's index in a catalog inferred by CS-SMC or Source Extractor may differ from its index in the true catalog; this ``label switching'' issue is inherent to transdimensional inference \citep{jasra2005markov}. The left panel of \autoref{fig:m71synth_totalflux} displays 90\% credible intervals for total flux, constructed for each image using quantiles of 10,000 CS-SMC catalogs; approximately 90\% of these intervals contain the true total flux. The middle panel demonstrates that this approximate achievement of the nominal coverage probability holds for interval widths between 0.05 and 0.95. The right panel reveals that Source Extractor's point estimates systematically underestimate the true total flux.
+
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_matching.png}
+    \caption[Synthetic images: Precision, recall, and F1 score by binned magnitude]{Precision, recall, and F1 score by binned magnitude in 1,000 synthetic $8{\times}8$-pixel images. Stars inferred by count-stratified SMC and Source Extractor are matched to true stars using the procedure described in \autoref{smc:resultssynthetic}. For count-stratified SMC, we report the mean of each metric across 200 posterior catalogs in each bin, as well as simultaneous 90\% confidence intervals with a Bonferroni correction.}
+    \label{fig:m71synth_matching}
+\end{figure}
+
+To assess the quality of individual detections made by each algorithm, we compute the precision (i.e., positive predictive value), recall (i.e, true positive rate), and F1 score (i.e., harmonic mean of precision and recall) of catalogs inferred by CS-SMC and Source Extractor by matching inferred stars to stars in the true catalog. Following \cite{feder2020multiband} and \cite{liu2023variational}, we match an inferred star with a true star if their locations differ by less than 0.5 pixels and their magnitudes differ by less than 0.5. \autoref{fig:m71synth_matching} reports the precision, recall, and F1 score of Source Extractor and CS-SMC detections across the 1,000 synthetic images for several magnitude bins. In each bin, the value reported for CS-SMC is the mean of each metric across 200 posterior catalogs. CS-SMC achieves a higher precision, recall, and F1 score than Source Extractor in all bins brighter than 22 magnitude. The two algorithms achieve similar metrics for stars fainter than this threshold, which is near the detection limit for SDSS images.
+
+\begin{figure}[t!]
+    \includegraphics[width=0.9\textwidth]{figures/m71synthetic_manyimages/m71synth_clf.png}
+    \caption[Synthetic images: Total and matched source counts by binned magnitude]{Total (left) and matched (right) source counts by binned magnitude in 1,000 synthetic $8{\times}8$-pixel images. Stars inferred by count-stratified SMC and Source Extractor are matched to true stars using the procedure described in \autoref{smc:resultssynthetic}. The median and 90\% credible interval are marked in each magnitude bin for count-stratified SMC.}
+    \label{fig:m71synth_countsmagbin}
+\end{figure}
+
+For both CS-SMC and Source Extractor, we also report the number of matched stars across the 1,000 images in several magnitude bins (right panel of \autoref{fig:m71synth_countsmagbin}), as well as the total number of detected stars in each bin (left panel). The latter is essentially a marginal version of the cumulative luminosity function, which is commonly used to summarize the properties of stellar and galactic clusters \citep{blanton2001luminosity, brewer2013probabilistic}. The distributions of total and matched stars inferred by CS-SMC closely match the distributions from the Hubble catalog in all but the faintest magnitude bin. In contrast, Source Extractor underestimates the total number of imaged stars, and consequently, the number of matched Source Extractor detections is also too small.
+
+\autoref{fig:appdx:m71synth_detections} displays the locations and fluxes of stars inferred by CS-SMC and Source Extractor for several images.
+
+
+
+\subsection{Results for the M71 Globular Cluster} \label{smc:resultsm71}
+
+We reached the same conclusions described in \autoref{smc:resultssynthetic} when analyzing the variability of $\log \widehat{p}(x \padvert s)$ and $\widehat{p}(s \padvert x)$ across independent runs of CS-SMC on real M71 cutouts; see \autoref{fig:appdx:m71_repeatedruns} for an example. Thus, as in \autoref{smc:resultssynthetic}, we set $N = 10,000$ and use 100 Metropolis-Hastings steps.
+
+For three representative M71 cutouts, \autoref{fig:m71_detections} displays the locations and fluxes of stars in the Hubble catalog, stars inferred in an ensemble of 10,000 CS-SMC catalogs, and stars inferred by Source Extractor. We include CS-SMC detections in the latent padding for visual effect; pruning these detections would truncate the two-dimensional density plots in the center column at the image boundary. In the first cutout, Source Extractor detects two spurious stars and confuses the two true stars for a single star. It fails to detect one star in the second cutout and two stars in the third. Individual CS-SMC catalogs cannot be discerned in the center column, but the two-dimensional density plots reflect a reasonable degree of posterior uncertainty surrounding the true locations and fluxes in all three cutouts. The posterior mean source counts in the three cutouts are 2.2, 3.6, and 4.7, respectively, and the posterior mode source counts are 2, 3, and 5.
+
+
+
+\begin{figure}[t]
+\centering
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71_manyimages/m71_detections_count2_all.png}
+\end{minipage} \\[-5pt]
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71_manyimages/m71_detections_count3_all.png}
+\end{minipage} \\[-5pt]
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71_manyimages/m71_detections_count4_all.png}
+\end{minipage}
+\caption[M71 cutouts: Locations and fluxes of detected stars]{Locations of detected stars in three $8{\times}8$-pixel M71 cutouts, colored by intrinsic flux (in nanomaggies). Left: The catalog that produced the image. Center: An ensemble of 10,000 CS-SMC catalogs. Right: Source Extractor point estimates.}
+\label{fig:m71_detections}
+\end{figure}
+
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=\textwidth]{figures/m71_manyimages/m71_matching.png}
+    \caption[M71 cutouts: Precision, recall, and F1 score by binned magnitude]{Precision, recall, and F1 score by binned magnitude in 332 $8{\times}8$-pixel M71 cutouts. Stars inferred by count-stratified SMC and Source Extractor are matched to true stars using the procedure described in \autoref{smc:resultssynthetic}. For count-stratified SMC, we report the mean of each metric across 200 posterior catalogs in each bin, as well as simultaneous 90\% confidence intervals with a Bonferroni correction.}
+    \label{fig:m71_matching}
+\end{figure}
+
+We match true and inferred stars using the procedure described in \autoref{smc:resultssynthetic} and report the precision, recall, and F1 score of the CS-SMC and Source Extractor detections across the 332 M71 cutouts in \autoref{fig:m71_matching}. The lowest and highest magnitude bins in \autoref{fig:m71_matching} are based on the flux distribution of stars in the Hubble catalog. As in \autoref{smc:resultssynthetic}, CS-SMC achieves better metrics than Source Extractor in all but the faintest magnitude bins. However, both algorithms perform worse on the real M71 cutouts than on the synthetic images.
+
+\autoref{fig:m71_countsmagbin} offers insight into this relative underperformance, as both CS-SMC and Source Extractor detect more stars in the intermediate magnitude bins than are present in the Hubble catalog. \autoref{fig:appdx:m71_confmats} corroborates this finding, and \autoref{fig:appdx:m71_totalflux} demonstrates that the total fluxes inferred by CS-SMC are poorly calibrated. Considering that CS-SMC exhibited strong performance in \autoref{smc:resultssynthetic} and that we extensively tuned the count-specific SMC samplers, the detection of spurious stars in the M71 cutouts suggests that the model proposed and fitted in \autoref{smc:m71model} is somehow misspecified. The most likely culprit is the point spread function — we theorize that the six-parameter SDSS PSF is not flexible enough. Alternatively, perhaps the PSF parameters vary across M71, and thus the maximum likelihood estimates from \autoref{smc:m71model} are inaccurate for some cutouts.
+
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/m71_manyimages/m71_clf.png}
+    \caption[M71 cutouts: Total and matched source counts by binned magnitude]{Total (left) and matched (right) source counts by binned magnitude in 332 $8{\times}8$-pixel M71 cutouts. Stars inferred by count-stratified SMC and Source Extractor are matched to true stars using the procedure described in \autoref{smc:resultssynthetic}. The median and 90\% credible interval are marked in each magnitude bin for count-stratified SMC.}
+    \label{fig:m71_countsmagbin}
+\end{figure}
+
+
+
+\section{Discussion} \label{smc:discussion}
+
+Probabilistic object detection methods based on transdimensional MCMC require the user to design transdimensional sampling mechanisms and assess whether a sequentially run Markov chain has sufficiently explored all plausible object counts. Our algorithm, CS-SMC, is a conceptually appealing alternative to these methods because it avoids transdimensional sampling, runs in parallel, and generates posterior samples of object positions and properties for all object counts in a prespecified set $\mathcal{S} = \{s_{\min},...,s_{\max}\}$.
+
+Although we demonstrated in \autoref{smc:crowdedstarfields} that CS-SMC outperforms a popular non-probabilistic algorithm in a particular object detection task, we have not yet established empirically that it is more efficient than methods based on transdimensional MCMC. In a future iteration of the crowded starfields case study, we plan to compare CS-SMC to PCAT, a probabilistic cataloging algorithm based on reversible jump MCMC \citep{portillo2017improved,feder2020multiband}.
+
+We expect that CS-SMC would be computationally inefficient if applied to large images or those requiring the detection of more than one or two dozen objects. The former is a demanding setting because the mutation stage of each count-specific SMC sampler requires many likelihood evaluations, and each likelihood evaluation operates on the $H{\times}W$-pixel image and a mean or rate parameter of the same size. The latter is demanding because CS-SMC infers the posterior distribution of $d \cdot \sum_{k=s_{\min}}^{s_{\max}} k$ latent variables, where $d = \vert \ell_{(s)}^j \vert + \vert f_{(s)}^j \vert$. Holding $d$ and $s_{\min}$ fixed, this quantity increases quadratically in $s_{\max}$.
+
+We intend to scale CS-SMC to larger, more crowded images by embedding it in a divide-and-conquer sequential Monte Carlo algorithm \citep{lindsten2017divide,kuntz2024divide}. We will infer the posterior distribution $p(s^{(u)}, z_{(s)}^{(u)} \padvert x^{(u)})$ for each subregion $u$ of a partitioned image, and then merge, mutate, and reweight posterior catalogs from progressively larger adjacent subregions. Preliminary results suggest that this procedure is computationally feasible.
+
+
+\backmatter
+
+\bmhead{Supplementary information}
+
+\begin{itemize}
+    \item Appendix A: Additional Results for Synthetic Images
+    \item Appendix B: Additional Results for the M71 Globular Cluster
+\end{itemize}
+
+
+
+\bmhead{Acknowledgements}
+
+This manuscript is based upon work supported by the National Science Foundation (\texttt{<grant identification number omitted>}).
+
+
+
+\newpage
+
+\begin{appendices}
+
+\section{Additional Results for Synthetic Images} \label{smc:additionalresultsforsynthetic}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_runtime.png}
+\caption[Synthetic images: Runtime]{Runtime of count-stratified sequential Monte Carlo by true source count (left), true total intrinsic flux (center), and the sum of the observed pixel intensities (right). Each dot represents the runtime in seconds for a single synthetic $8{\times}8$-pixel image.}
+\label{fig:appdx:m71synth_runtime}
+\end{figure}
+
+\newpage
+
+\begin{figure}[H]
+\centering
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71synthetic_repeatedruns/m71synthetic_repeatedruns_logpx1.png}
+\end{minipage}
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71synthetic_repeatedruns/m71synthetic_repeatedruns_countprob1.png}
+\end{minipage}
+\caption[Synthetic images: Variability across runs for an image with one star]{Top: Variability of marginal log-likelihood estimates $\log \widehat{p}(x \padvert s)$ ($s \in \{1,...,5\}$) across 100 independent runs of count-stratified SMC on a synthetic $8{\times}8$-pixel image with true source count $s = 1$. These 100 runs were repeated for nine combinations of the number of catalogs per source count $N$ (columns) and the number of MCMC iterations used in the mutation stage of SMC (colors/markers). The bars in each panel indicate the middle 90\% of estimates. Bottom: Variability of the corresponding posterior source count probabilities $\widehat{p}(s \padvert x)$ ($s \in \{1,...,5\}$) across the 100 independent runs for each combination of $N$ and \# MCMC iterations.}
+\label{fig:appdx:m71synth_repeatedruns}
+\end{figure}
+
+\newpage
+
+\begin{figure}[H]
+\centering
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_detections_count2_all.png}
+\end{minipage} \\[-5pt]
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_detections_count3_all.png}
+\end{minipage} \\[-5pt]
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_detections_count4_all.png}
+\end{minipage} \\[-5pt]
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_detections_count5_all.png}
+\end{minipage}
+\caption[Synthetic images: Locations and fluxes of detected stars]{Locations of detected stars in four synthetic $8{\times}8$-pixel images, colored by intrinsic flux (in nanomaggies). Left: The catalog that produced the image. Center: An ensemble of 10,000 CS-SMC catalogs. Right: Source Extractor point estimates.}
+\label{fig:appdx:m71synth_detections}
+\end{figure}
+
+
+
+\newpage
+
+\section{Additional Results for the M71 Globular Cluster} \label{smc:additionalresultsform71}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\textwidth]{figures/m71_manyimages/m71_target_region.png}
+  \caption[The Messier 71 globular cluster]{The $1489{\times}2048$-pixel region of the Messier 71 globular cluster imaged by the Sloan Digital Sky Survey. The $540{\times}370$-pixel subregion imaged by the Hubble Space Telescope is outlined in red, and the $320{\times}160$-pixel subregion we analyze in \autoref{smc:crowdedstarfields} is outlined in blue.}
+  \label{fig:appdx:m71_targetregion}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{figures/m71_manyimages/m71_runtime.png}
+\caption[M71 cutouts: Runtime]{Runtime of count-stratified sequential Monte Carlo by true source count (left), true total intrinsic flux (center), and the sum of the observed pixel intensities (right). Each dot represents the runtime in seconds for a single $8{\times}8$-pixel M71 cutout.}
+\label{fig:appdx:m71_runtime}
+\end{figure}
+
+\newpage
+
+\begin{figure}[H]
+\centering
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71_repeatedruns/m71_repeatedruns_logpx1.png}
+\end{minipage}
+\begin{minipage}[t]{\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/m71_repeatedruns/m71_repeatedruns_countprob1.png}
+\end{minipage}
+\caption[M71 cutouts: Variability across runs]{Top: Variability of marginal log-likelihood estimates $\log \widehat{p}(x \padvert s)$ ($s \in \{1,...,5\}$) across 100 independent runs of count-stratified SMC on an $8{\times}8$-pixel M71 subregion. These 100 runs were repeated for nine combinations of the number of catalogs per source count $N$ (columns) and the number of MCMC iterations used in the mutation stage of SMC (colors/markers). The bars in each panel indicate the middle 90\% of estimates. Bottom: Variability of the corresponding posterior source count probabilities $\widehat{p}(s \padvert x)$ ($s \in \{1,...,5\}$) across the 100 independent runs for each combination of $N$ and \# MCMC iterations.}
+\label{fig:appdx:m71_repeatedruns}
+\end{figure}
+
+\newpage
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/m71_manyimages/m71_confmat_smc_samples.png}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/m71_manyimages/m71_confmat_sep.png}
+\end{subfigure}
+\caption[M71 cutouts: True versus estimated source counts]{True versus estimated source counts in 332 $8{\times}8$-pixel M71 cutouts. Estimated source counts are 10,000 count-stratified SMC catalogs per image (left) and the Source Extractor point estimate for each image (right).}
+\label{fig:appdx:m71_confmats}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \includegraphics[width=\textwidth]{figures/m71_manyimages/m71_totalflux_intervals_smc.png}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \includegraphics[width=\textwidth]{figures/m71_manyimages/m71_totalflux_coverage_smc.png}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \includegraphics[width=\textwidth]{figures/m71_manyimages/m71_totalflux_sep.png}
+\end{subfigure}
+\caption[M71 cutouts: Accuracy and calibration of estimated total intrinsic flux]{Accuracy and calibration of estimated total intrinsic flux (in nanomaggies) for 332 $8{\times}8$-pixel M71 cutouts. Left: Nominal versus empirical frequentist coverage of CS-SMC credible intervals. Center: 90\% CS-SMC credible intervals, with intervals covering the true total intrinsic flux in blue and those failing to cover the truth in gold. Right: True total intrinsic flux versus Source Extractor point estimates.}
+\label{fig:appdx:m71_totalflux}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/m71_manyimages/m71_clf.png}
+    \caption[M71 cutouts: Total and matched source counts by binned magnitude]{Total (left) and matched (right) source counts by binned magnitude in 332 $8{\times}8$-pixel M71 cutouts. Stars inferred by count-stratified SMC and Source Extractor are matched to true stars using the procedure described in \autoref{smc:resultssynthetic}. The median and 90\% credible interval are marked in each magnitude bin for count-stratified SMC.}
+    \label{fig:appdx:m71_countsmagbin}
+\end{figure}
+
+\end{appendices}
+
+
+%%=============================================%%
+%% For submissions to Nature Portfolio Journals %%
+%% please use the heading ``Extended Data''.   %%
+%%=============================================%%
+
+%%=============================================================%%
+%% Sample for another appendix section			       %%
+%%=============================================================%%
+
+%% \section{Example of another appendix section}\label{secA2}%
+%% Appendices may be used for helpful, supporting or essential material that would otherwise
+%% clutter, break up or be distracting to the text. Appendices can consist of sections, figures,
+%% tables and equations etc.
+
+%%===========================================================================================%%
+%% If you are submitting to one of the Nature Portfolio journals, using the eJP submission   %%
+%% system, please include the references within the manuscript file itself. You may do this  %%
+%% by copying the reference list from your .bbl file, paste it into the main manuscript .tex %%
+%% file, and delete the associated \verb+\bibliography+ commands.                            %%
+%%===========================================================================================%%
+
+\newpage
+
+\bibliography{references}% common bib file
+%% if required, the content of .bbl file can be included here once bbl is generated
+%%\input sn-article.bbl
+
+\end{document}
