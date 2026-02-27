@@ -25,3 +25,4 @@ manuscript/*.toc
 
 # Springer Nature template files
 manuscript/*.bst
+manuscript/*.cls

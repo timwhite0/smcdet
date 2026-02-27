@@ -1,95 +1,86 @@
-% SDSI (Statistics in Data Science and Imaging) template
-\PassOptionsToPackage{unicode}{hyperref}
-\PassOptionsToPackage{hyphens}{url}
-\PassOptionsToPackage{dvipsnames,svgnames,x11names}{xcolor}
+%Version 3.1 December 2024
+% See section 11 of the User Manual for version history
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                                 %%
+%% Please do not use \input{...} to include other tex files.       %%
+%% Submit your LaTeX manuscript as one .tex document.              %%
+%%                                                                 %%
+%% All additional figures and files should be attached             %%
+%% separately and not embedded in the \TeX\ document itself.       %%
+%%                                                                 %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\documentclass[12pt]{article}
+%%\documentclass[referee,sn-basic]{sn-jnl}% referee option is meant for double line spacing
 
-%%% Fonts and encoding
-\usepackage[T1]{fontenc}
-\usepackage[utf8]{inputenc}
-\usepackage{lmodern}
+%%=======================================================%%
+%% to print line numbers in the margin use lineno option %%
+%%=======================================================%%
 
-%%% Typography
-\IfFileExists{microtype.sty}{%
-  \usepackage[]{microtype}
-  \UseMicrotypeSet[protrusion]{basicmath}
-}{}
-\setlength{\emergencystretch}{3em}
-\setcounter{secnumdepth}{5}
+%%\documentclass[lineno,pdflatex,sn-basic]{sn-jnl}% Basic Springer Nature Reference Style/Chemistry Reference Style
 
-%%% Math
-\usepackage{amsmath,amssymb,amsfonts}
+%%=========================================================================================%%
+%% the documentclass is set to pdflatex as default. You can delete it if not appropriate.  %%
+%%=========================================================================================%%
+
+%%\documentclass[sn-basic]{sn-jnl}% Basic Springer Nature Reference Style/Chemistry Reference Style
+
+%%Note: the following reference styles support Namedate and Numbered referencing. By default the style follows the most common style. To switch between the options you can add or remove Numbered in the optional parenthesis.
+%%The option is available for: sn-basic.bst, sn-chicago.bst%
+
+%%\documentclass[pdflatex,sn-nature]{sn-jnl}% Style for submissions to Nature Portfolio journals
+%%\documentclass[pdflatex,sn-basic]{sn-jnl}% Basic Springer Nature Reference Style/Chemistry Reference Style
+\documentclass[pdflatex,sn-mathphys-num]{sn-jnl}% Math and Physical Sciences Numbered Reference Style
+%%\documentclass[pdflatex,sn-mathphys-ay]{sn-jnl}% Math and Physical Sciences Author Year Reference Style
+%%\documentclass[pdflatex,sn-aps]{sn-jnl}% American Physical Society (APS) Reference Style
+%%\documentclass[pdflatex,sn-vancouver-num]{sn-jnl}% Vancouver Numbered Reference Style
+%%\documentclass[pdflatex,sn-vancouver-ay]{sn-jnl}% Vancouver Author Year Reference Style
+%%\documentclass[pdflatex,sn-apa]{sn-jnl}% APA Reference Style
+%%\documentclass[pdflatex,sn-chicago]{sn-jnl}% Chicago-based Humanities Reference Style
+
+%%%% Standard Packages
+%%<additional latex packages if required can be included here>
+
+\usepackage{graphicx}%
+\usepackage{multirow}%
+\usepackage{amsmath,amssymb,amsfonts}%
+\usepackage{amsthm}%
+\usepackage{mathrsfs}%
+\usepackage[title]{appendix}%
+\usepackage{xcolor}%
+\usepackage{textcomp}%
+\usepackage{manyfoot}%
+\usepackage{booktabs}%
+\usepackage{algorithm}%
+\usepackage{algorithmicx}%
+\usepackage[noend]{algpseudocode}%
+\usepackage{listings}%
+%%%%
+
+%%%% Additional packages and commands
+\usepackage{xfrac}
 \usepackage{mathtools}
-
-%%% Graphics and figures
-\usepackage{xcolor}
-\usepackage{graphicx}
-\usepackage{float}
-\usepackage{subcaption}
-
-%%% Tables
-\usepackage{booktabs}
-
-%%% Algorithms
-\usepackage{algorithm}
-\usepackage{algorithmicx}
-\usepackage[noend]{algpseudocode}
-
-%%% TikZ
-\usepackage{tikz}
-\usetikzlibrary{calc,positioning}
-
-%%% Appendices
-\usepackage[title]{appendix}
-
-%%% Review comments
-\usepackage[colorinlistoftodos]{todonotes}
-
-%%% SDSI margin adjustments
-\addtolength{\oddsidemargin}{-.5in}
-\addtolength{\evensidemargin}{-.1in}
-\addtolength{\textwidth}{1in}
-\addtolength{\textheight}{1.7in}
-\addtolength{\topmargin}{-1in}
-
-%%% Default figure placement
-\makeatletter
-\def\fps@figure{htbp}
-\makeatother
-
-%%% Citations: natbib with SDSI agsm style (author-year)
-\usepackage[]{natbib}
-\bibliographystyle{agsm}
-
-%%% Hyperlinks and bookmarks
+\usepackage{anyfontsize}
 \usepackage{bookmark}
-\IfFileExists{xurl.sty}{\usepackage{xurl}}{}
-\urlstyle{same}
-\hypersetup{
-  pdftitle={Sequential Monte Carlo Samplers for Probabilistic Object Detection in Images},
-  pdfauthor={Tim White; Jeffrey Regier},
-  pdfkeywords={interacting particle systems, marked point processes, posterior sampling, likelihood tempering, transdimensional inference, Bayesian model choice},
-  colorlinks=true,
-  linkcolor={blue},
-  filecolor={Maroon},
-  citecolor={Blue},
-  urlcolor={Blue}
-}
-
-%%% Autoref names
+\newcommand{\mathds}[1]{\mathbb{#1}}
+\usepackage{cleveref}
+\crefname{figure}{Figure}{Figures}
+\Crefname{figure}{Figure}{Figures}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage{subcaption}
 \renewcommand{\sectionautorefname}{Section}
 \newcommand{\algorithmautorefname}{Algorithm}
 \renewcommand{\figurename}{Figure}
-
-%%% Custom commands
-\newcommand{\padvert}{\thinspace \vert \thinspace}
-\newcommand{\mathds}[1]{\mathbb{#1}}
 \renewcommand{\algorithmicrequire}{\textbf{Inputs:}}
 \renewcommand{\algorithmicensure}{\textbf{Return:}}
 \newcommand{\algorithmspace}{\vspace{3pt}}
+\newcommand{\padvert}{\thinspace \vert \thinspace}
 
-%%% Custom colors
+\usepackage{tikz, pgfplots}
+\usetikzlibrary{calc,positioning,external,shapes.geometric,bending,fit}
+% \tikzexternalize
+% \pgfplotsset{compat=1.18}
+
 \definecolor{steelblue}{HTML}{4682B4}
 \definecolor{burlywood}{HTML}{DEB887}
 \definecolor{indianred}{HTML}{CD5C5C}
@@ -97,59 +88,72 @@
 \definecolor{sienna}{HTML}{A9561E}
 \definecolor{grassgreen}{HTML}{3F9B0B}
 
-%%% Review comments
 \newcommand{\jeff}[1]{\todo[inline, color=blue!30]{#1 \mbox{--Jeff}}}
 \newcommand{\tim}[1]{\todo[inline, color=red!30]{#1 \mbox{--Tim}}}
+%%%%
 
-%%% SDSI anonymization flag
-%%% Set to 0 to hide authors and acknowledgements (for anonymous review)
-%%% Set to 1 to show authors and acknowledgements
-\newcommand{\anon}{1}
+%%%%%=============================================================================%%%%
+%%%%  Remarks: This template is provided to aid authors with the preparation
+%%%%  of original research articles intended for submission to journals published
+%%%%  by Springer Nature. The guidance has been prepared in partnership with
+%%%%  production teams to conform to Springer Nature technical requirements.
+%%%%  Editorial and presentation requirements differ among journal portfolios and
+%%%%  research disciplines. You may find sections in this template are irrelevant
+%%%%  to your work and are empowered to omit any such section if allowed by the
+%%%%  journal you intend to submit to. The submission guidelines and policies
+%%%%  of the journal take precedence. A detailed User Manual is available in the
+%%%%  template package for technical guidance.
+%%%%%=============================================================================%%%%
 
+%% as per the requirement new theorem styles can be included as shown below
+\theoremstyle{thmstyleone}%
+\newtheorem{theorem}{Theorem}%  meant for continuous numbers
+%%\newtheorem{theorem}{Theorem}[section]% meant for sectionwise numbers
+%% optional argument [theorem] produces theorem numbering sequence instead of independent numbers for Proposition
+\newtheorem{proposition}[theorem]{Proposition}%
+%%\newtheorem{proposition}{Proposition}% to get separate numbers for theorem and proposition etc.
+
+\theoremstyle{thmstyletwo}%
+\newtheorem{example}{Example}%
+\newtheorem{remark}{Remark}%
+
+\theoremstyle{thmstylethree}%
+\newtheorem{definition}{Definition}%
+
+\raggedbottom
+%%\unnumbered% uncomment this for unnumbered level heads
 
 \begin{document}
 
-\def\spacingset#1{\renewcommand{\baselinestretch}%
-{#1}\small\normalsize} \spacingset{1}
+\title[SMC for object detection]{Sequential Monte Carlo Samplers for Probabilistic Object Detection in Images}
+%%=============================================================%%
+%% GivenName	-> \fnm{Joergen W.}
+%% Particle	-> \spfx{van der} -> surname prefix
+%% FamilyName	-> \sur{Ploeg}
+%% Suffix	-> \sfx{IV}
+%% \author*[1,2]{\fnm{Joergen W.} \spfx{van der} \sur{Ploeg}
+%%  \sfx{IV}}\email{iauthor@gmail.com}
+%%=============================================================%%
 
+% \author*[1]{\fnm{Tim} \sur{White}}\email{twhit@umich.edu}
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \author[1]{\fnm{Jeffrey} \sur{Regier}}\email{regier@umich.edu}
 
-\if1\anon
-{
-  \title{\bf Sequential Monte Carlo Samplers for Probabilistic Cataloging of Crowded Starfields}
-  \author{Tim White\thanks{
-    This manuscript is based upon work supported by the National Science Foundation (\texttt{<grant identification number omitted>}).}\hspace{.2cm}\\
-    Department of Statistics, University of Michigan\\
-    and \\
-    Jeffrey Regier \\
-    Department of Statistics, University of Michigan}
-  \maketitle
-} \fi
+% \affil[1]{\orgdiv{Department of Statistics}, \orgname{University of Michigan}, \orgaddress{\city{Ann Arbor}, \postcode{48109}, \state{Michigan}, \country{United States}}}
 
-\if0\anon
-{
-  \bigskip
-  \bigskip
-  \bigskip
-  \begin{center}
-    {\LARGE\bf Sequential Monte Carlo Samplers for Probabilistic Cataloging of Crowded Starfields}
-  \end{center}
-  \medskip
-} \fi
+%%==================================%%
+%% Sample for unstructured abstract %%
+%%==================================%%
 
-\bigskip
-\begin{abstract}
-Object detection is a fundamental image analysis task that is relevant to many scientific disciplines. Although scientists typically possess some knowledge of the shapes, sizes, and features of the objects in an image, inferring these properties from pixels is challenging when the objects overlap or exhibit low contrast with the background. The Bayesian paradigm is well suited to this task because it enables probabilistic inference of the number of imaged objects and allows practitioners to incorporate prior knowledge about their properties. However, most existing Bayesian object detection methods rely on transdimensional sampling algorithms such as reversible jump Markov chain Monte Carlo, which are often challenging to design and incompatible with modern parallel computing capabilities. We propose count-stratified sequential Monte Carlo (CS-SMC), a parallelizable probabilistic approach to detecting objects in crowded scenes. Given an image, CS-SMC generates posterior samples of object counts, positions, and properties by running several fixed-dimensional SMC samplers in parallel. The samples and marginal likelihood estimates produced by these SMC samplers can be combined with a prior distribution over object counts to perform posterior inference over sets of objects. In a case study involving astronomical images of crowded starfields, CS-SMC provides well-calibrated estimates of stellar counts, fluxes, and locations. These results suggest that our algorithm is a compelling alternative to existing object detection methods in settings where a well-specified parametric object model is available.
-\end{abstract}
+\abstract{Object detection is a fundamental image analysis task that is relevant to many scientific disciplines. Although scientists typically possess some knowledge of the shapes, sizes, and features of the objects in an image, inferring these properties from pixels is challenging when the objects overlap or exhibit low contrast with the background. The Bayesian paradigm is well suited to this task because it enables probabilistic inference of the number of imaged objects and allows practitioners to incorporate prior knowledge about their properties. However, most existing Bayesian object detection methods rely on transdimensional sampling algorithms such as reversible jump Markov chain Monte Carlo, which are often challenging to design and incompatible with modern parallel computing capabilities. We propose count-stratified sequential Monte Carlo (CS-SMC), a parallelizable probabilistic approach to detecting objects in crowded scenes. Given an image, CS-SMC generates posterior samples of object counts, positions, and properties by running several fixed-dimensional SMC samplers in parallel. The samples and marginal likelihood estimates produced by these SMC samplers can be combined with a prior distribution over object counts to perform posterior inference over sets of objects. In a case study involving astronomical images of crowded starfields, CS-SMC provides well-calibrated estimates of stellar counts, fluxes, and locations. These results suggest that our algorithm is a compelling alternative to existing object detection methods in settings where a well-specified parametric object model is available.}
 
-\noindent%
-{\it Keywords:} interacting particle systems, marked point processes, posterior sampling, likelihood tempering, transdimensional inference, Bayesian model choice
-\vfill
+\keywords{interacting particle systems, marked point processes, posterior sampling, likelihood tempering, transdimensional inference, Bayesian model choice}
 
-\newpage
-\spacingset{1} % DON'T change the spacing!
+%%\pacs[JEL Classification]{D8, H51}
 
+%%\pacs[MSC Classification]{35A01, 65L10, 65L12, 65L20, 65L70}
+
+\maketitle
 
 \section{Introduction} \label{smc:introduction}
 
@@ -696,25 +700,21 @@ We expect that CS-SMC would be computationally inefficient if applied to large i
 We intend to scale CS-SMC to larger, more crowded images by embedding it in a divide-and-conquer sequential Monte Carlo algorithm \citep{lindsten2017divide,kuntz2024divide}. We will infer the posterior distribution $p(s^{(u)}, z_{(s)}^{(u)} \padvert x^{(u)})$ for each subregion $u$ of a partitioned image, and then merge, mutate, and reweight posterior catalogs from progressively larger adjacent subregions. Preliminary results suggest that this procedure is computationally feasible.
 
 
-\section{Disclosure Statement}\label{disclosure-statement}
+\backmatter
 
-The authors have no conflicts of interest to declare.
+\bmhead{Supplementary information}
 
-\section{Data Availability Statement}\label{data-availability-statement}
+\begin{itemize}
+    \item Appendix A: Additional Results for Synthetic Images
+    \item Appendix B: Additional Results for the M71 Globular Cluster
+\end{itemize}
 
-Code to reproduce both sets of experiments is publicly available at \url{https://github.com/timwhite0/smc_object_detection}.
 
-\phantomsection\label{supplementary-material}
-\bigskip
 
-\begin{center}
-{\large\bf SUPPLEMENTARY MATERIAL}
-\end{center}
+\bmhead{Acknowledgements}
 
-\begin{description}
-\item[Appendix A:] Additional results for synthetic images. (PDF)
-\item[Appendix B:] Additional results for the M71 globular cluster. (PDF)
-\end{description}
+This manuscript is based upon work supported by the National Science Foundation (\texttt{<grant identification number omitted>}).
+
 
 
 \newpage
@@ -848,9 +848,31 @@ Code to reproduce both sets of experiments is publicly available at \url{https:/
 \end{appendices}
 
 
+%%=============================================%%
+%% For submissions to Nature Portfolio Journals %%
+%% please use the heading ``Extended Data''.   %%
+%%=============================================%%
+
+%%=============================================================%%
+%% Sample for another appendix section			       %%
+%%=============================================================%%
+
+%% \section{Example of another appendix section}\label{secA2}%
+%% Appendices may be used for helpful, supporting or essential material that would otherwise
+%% clutter, break up or be distracting to the text. Appendices can consist of sections, figures,
+%% tables and equations etc.
+
+%%===========================================================================================%%
+%% If you are submitting to one of the Nature Portfolio journals, using the eJP submission   %%
+%% system, please include the references within the manuscript file itself. You may do this  %%
+%% by copying the reference list from your .bbl file, paste it into the main manuscript .tex %%
+%% file, and delete the associated \verb+\bibliography+ commands.                            %%
+%%===========================================================================================%%
+
 \newpage
 
-\bibliography{references}
-
+\bibliography{references}% common bib file
+%% if required, the content of .bbl file can be included here once bbl is generated
+%%\input sn-article.bbl
 
 \end{document}
