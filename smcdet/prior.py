@@ -26,10 +26,16 @@ class PointProcessPrior(object):
     def sample(
         self,
         num_catalogs=1,
-        num_tiles_per_side=1,
+        num_tiles_per_side=None,
+        num_tiles_h=1,
+        num_tiles_w=1,
         stratify_by_count=False,
         num_catalogs_per_count=None,
     ):
+        if num_tiles_per_side is not None:
+            num_tiles_h = num_tiles_per_side
+            num_tiles_w = num_tiles_per_side
+
         if stratify_by_count is True and num_catalogs_per_count is None:
             raise ValueError(
                 "If stratify_by_count is True, need to specify catalogs_per_count."
@@ -42,7 +48,7 @@ class PointProcessPrior(object):
         if stratify_by_count is False:
             self.num = num_catalogs
             count_indices = self.count_prior.sample(
-                [num_tiles_per_side, num_tiles_per_side, self.num]
+                [num_tiles_h, num_tiles_w, self.num]
             ).int()
             counts = torch.arange(self.min_objects, self.max_objects + 1)[count_indices]
         elif stratify_by_count is True:
@@ -50,15 +56,13 @@ class PointProcessPrior(object):
             strata = torch.arange(
                 self.min_objects, self.max_objects + 1
             ).repeat_interleave(num_catalogs_per_count)
-            counts = strata * torch.ones(
-                num_tiles_per_side, num_tiles_per_side, self.num
-            )
+            counts = strata * torch.ones(num_tiles_h, num_tiles_w, self.num)
 
         self.counts_mask = torch.arange(0, self.max_objects).unsqueeze(
             0
         ) < counts.unsqueeze(3)
         locs = self.loc_prior.sample(
-            [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
+            [num_tiles_h, num_tiles_w, self.num, self.max_objects]
         )
         locs *= self.counts_mask.unsqueeze(4)
 
@@ -142,16 +146,26 @@ class StarPrior(PointProcessPrior):
     def sample(
         self,
         num_catalogs=1,
-        num_tiles_per_side=1,
+        num_tiles_per_side=None,
+        num_tiles_h=1,
+        num_tiles_w=1,
         stratify_by_count=False,
         num_catalogs_per_count=None,
     ):
+        if num_tiles_per_side is not None:
+            num_tiles_h = num_tiles_per_side
+            num_tiles_w = num_tiles_per_side
+
         counts, locs = super().sample(
-            num_catalogs, num_tiles_per_side, stratify_by_count, num_catalogs_per_count
+            num_catalogs,
+            num_tiles_h=num_tiles_h,
+            num_tiles_w=num_tiles_w,
+            stratify_by_count=stratify_by_count,
+            num_catalogs_per_count=num_catalogs_per_count,
         )
 
         fluxes = self.flux_prior.sample(
-            [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
+            [num_tiles_h, num_tiles_w, self.num, self.max_objects]
         )
         fluxes *= self.counts_mask
 
@@ -174,16 +188,26 @@ class ParetoStarPrior(PointProcessPrior):
     def sample(
         self,
         num_catalogs=1,
-        num_tiles_per_side=1,
+        num_tiles_per_side=None,
+        num_tiles_h=1,
+        num_tiles_w=1,
         stratify_by_count=False,
         num_catalogs_per_count=None,
     ):
+        if num_tiles_per_side is not None:
+            num_tiles_h = num_tiles_per_side
+            num_tiles_w = num_tiles_per_side
+
         counts, locs = super().sample(
-            num_catalogs, num_tiles_per_side, stratify_by_count, num_catalogs_per_count
+            num_catalogs,
+            num_tiles_h=num_tiles_h,
+            num_tiles_w=num_tiles_w,
+            stratify_by_count=stratify_by_count,
+            num_catalogs_per_count=num_catalogs_per_count,
         )
 
         fluxes = self.flux_prior.sample(
-            [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
+            [num_tiles_h, num_tiles_w, self.num, self.max_objects]
         )
         fluxes *= self.counts_mask
 
@@ -211,16 +235,26 @@ class M71Prior(PoissonProcessPrior):
     def sample(
         self,
         num_catalogs=1,
-        num_tiles_per_side=1,
+        num_tiles_per_side=None,
+        num_tiles_h=1,
+        num_tiles_w=1,
         stratify_by_count=False,
         num_catalogs_per_count=None,
     ):
+        if num_tiles_per_side is not None:
+            num_tiles_h = num_tiles_per_side
+            num_tiles_w = num_tiles_per_side
+
         counts, locs = super().sample(
-            num_catalogs, num_tiles_per_side, stratify_by_count, num_catalogs_per_count
+            num_catalogs,
+            num_tiles_h=num_tiles_h,
+            num_tiles_w=num_tiles_w,
+            stratify_by_count=stratify_by_count,
+            num_catalogs_per_count=num_catalogs_per_count,
         )
 
         fluxes = self.flux_prior.sample(
-            [num_tiles_per_side, num_tiles_per_side, self.num, self.max_objects]
+            [num_tiles_h, num_tiles_w, self.num, self.max_objects]
         )
         fluxes *= self.counts_mask
 

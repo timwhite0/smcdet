@@ -14,12 +14,29 @@ class ImageModel(object):
         psf_radius: int,
         psf_stdev=None,
     ):
-        self.h_lower = h_lower
-        self.h_upper = h_upper
-        self.w_lower = w_lower
-        self.w_upper = w_upper
-        self.image_height = h_upper - h_lower
-        self.image_width = w_upper - w_lower
+        # Store bounds as tensors; scalars become [1, 1] for broadcasting
+        self.h_lower = torch.as_tensor(h_lower).float()
+        self.h_upper = torch.as_tensor(h_upper).float()
+        self.w_lower = torch.as_tensor(w_lower).float()
+        self.w_upper = torch.as_tensor(w_upper).float()
+        if self.h_lower.dim() == 0:
+            self.h_lower = self.h_lower.unsqueeze(0).unsqueeze(0)
+            self.h_upper = self.h_upper.unsqueeze(0).unsqueeze(0)
+            self.w_lower = self.w_lower.unsqueeze(0).unsqueeze(0)
+            self.w_upper = self.w_upper.unsqueeze(0).unsqueeze(0)
+
+        # image_height/width must be uniform across all tiles
+        heights = self.h_upper - self.h_lower
+        widths = self.w_upper - self.w_lower
+        assert (heights == heights.flatten()[0]).all(), (
+            "All tiles must have the same image height"
+        )
+        assert (widths == widths.flatten()[0]).all(), (
+            "All tiles must have the same image width"
+        )
+        self.image_height = int(heights.flatten()[0].item())
+        self.image_width = int(widths.flatten()[0].item())
+
         self.background = background
         self.psf_radius = psf_radius
         self.psf_stdev = psf_stdev
@@ -45,12 +62,22 @@ class ImageModel(object):
             self.psf_patch, "dimH dimW t -> 1 1 1 1 dimH dimW t"
         )
 
-        h_in_bounds = (pixel_coords[..., 0] >= self.h_lower) & (
-            pixel_coords[..., 0] < self.h_upper
+        # Reshape bounds [numH, numW] -> [numH, numW, 1, 1, 1, 1] for broadcasting
+        h_lo = self.h_lower.reshape(
+            self.h_lower.shape[0], self.h_lower.shape[1], 1, 1, 1, 1
         )
-        w_in_bounds = (pixel_coords[..., 1] >= self.w_lower) & (
-            pixel_coords[..., 1] < self.w_upper
+        h_hi = self.h_upper.reshape(
+            self.h_upper.shape[0], self.h_upper.shape[1], 1, 1, 1, 1
         )
+        w_lo = self.w_lower.reshape(
+            self.w_lower.shape[0], self.w_lower.shape[1], 1, 1, 1, 1
+        )
+        w_hi = self.w_upper.reshape(
+            self.w_upper.shape[0], self.w_upper.shape[1], 1, 1, 1, 1
+        )
+
+        h_in_bounds = (pixel_coords[..., 0] >= h_lo) & (pixel_coords[..., 0] < h_hi)
+        w_in_bounds = (pixel_coords[..., 1] >= w_lo) & (pixel_coords[..., 1] < w_hi)
         coords_in_bounds = h_in_bounds & w_in_bounds
 
         r = torch.norm((pixel_coords + 0.5) - star_centers, dim=-1)
@@ -70,9 +97,9 @@ class ImageModel(object):
                 h_tile, w_tile, n_idx, d_idx, h_patch, w_patch, 1
             ]
 
-            # Convert global coordinates to local image coordinates
-            target_h = target_h_global - int(self.h_lower)
-            target_w = target_w_global - int(self.w_lower)
+            # Convert global coordinates to local image coordinates (per-tile)
+            target_h = target_h_global - self.h_lower[h_tile, w_tile].long()
+            target_w = target_w_global - self.w_lower[h_tile, w_tile].long()
 
             linear_indices = (
                 h_tile * numW * self.image_height * self.image_width * n * d
@@ -97,7 +124,12 @@ class ImageModel(object):
         ) + self.background
         return Poisson(rate).sample()
 
-    def loglikelihood(self, image, locs, fluxes):
+    def loglikelihood(self, image, locs, fluxes, locs_cond=None, fluxes_cond=None):
+        if locs_cond is not None:
+            locs = torch.cat((locs, locs_cond), dim=-2)
+        if fluxes_cond is not None:
+            fluxes = torch.cat((fluxes, fluxes_cond), dim=-1)
+
         psf = self.psf(locs)
         rate = (psf * rearrange(fluxes, "numH numW n d -> numH numW 1 1 n d")).sum(
             -1

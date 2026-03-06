@@ -30,8 +30,8 @@ class SMCsampler(object):
         self.image_height = image.shape[-2]
         self.image_width = image.shape[-1]
 
-        assert image.shape[0] == image.shape[1]
-        self.num_tiles_per_side = image.shape[0]
+        self.num_tiles_h = image.shape[0]
+        self.num_tiles_w = image.shape[1]
 
         self.Prior = Prior
         self.ImageModel = ImageModel
@@ -51,10 +51,10 @@ class SMCsampler(object):
 
         self.pruned_flux_lower = prune_flux_lower
 
-        self.prune_h_lower = prune_h_lower
-        self.prune_h_upper = prune_h_upper
-        self.prune_w_lower = prune_w_lower
-        self.prune_w_upper = prune_w_upper
+        self.prune_h_lower = torch.as_tensor(prune_h_lower).float()
+        self.prune_h_upper = torch.as_tensor(prune_h_upper).float()
+        self.prune_w_lower = torch.as_tensor(prune_w_lower).float()
+        self.prune_w_upper = torch.as_tensor(prune_w_upper).float()
 
         self.max_smc_iters = max_smc_iters
 
@@ -68,17 +68,16 @@ class SMCsampler(object):
     def initialize(self):
         # initialize catalogs
         cats = self.Prior.sample(
-            num_tiles_per_side=self.num_tiles_per_side,
+            num_tiles_h=self.num_tiles_h,
+            num_tiles_w=self.num_tiles_w,
             stratify_by_count=True,
             num_catalogs_per_count=self.num_catalogs,
         )
         self.counts, self.locs, self.fluxes = cats
 
         # initialize temperature
-        self.temperature_prev = torch.zeros(
-            self.num_tiles_per_side, self.num_tiles_per_side
-        )
-        self.temperature = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
+        self.temperature_prev = torch.zeros(self.num_tiles_h, self.num_tiles_w)
+        self.temperature = torch.zeros(self.num_tiles_h, self.num_tiles_w)
 
         # cache loglikelihood for tempering step
         self.loglik = self.ImageModel.loglikelihood(
@@ -91,7 +90,7 @@ class SMCsampler(object):
 
         # initialize weights and normalizing constant
         self.weights_log_unnorm = torch.zeros(
-            self.num_tiles_per_side, self.num_tiles_per_side, self.num_catalogs
+            self.num_tiles_h, self.num_tiles_w, self.num_catalogs
         )
         self.weights = self.weights_log_unnorm.softmax(-1)
         self.log_normalizing_constant = self.weights_log_unnorm.exp().mean(-1).log()
@@ -123,10 +122,10 @@ class SMCsampler(object):
         )
         loglik = self.loglik.cpu()
 
-        delta = torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side)
+        delta = torch.zeros(self.num_tiles_h, self.num_tiles_w)
 
-        for h in range(self.num_tiles_per_side):
-            for w in range(self.num_tiles_per_side):
+        for h in range(self.num_tiles_h):
+            for w in range(self.num_tiles_w):
 
                 def func(delta):
                     return self.tempering_objective(loglik[h, w], delta)
@@ -151,21 +150,21 @@ class SMCsampler(object):
                 self.num_catalogs, replacement=True
             )
             resampled_index = resampled_index_flat.unflatten(
-                0, (self.num_tiles_per_side, self.num_tiles_per_side)
+                0, (self.num_tiles_h, self.num_tiles_w)
             )
         elif self.resample_method == "systematic":
             resampled_index = torch.zeros_like(self.weights, dtype=torch.int64)
             seq = repeat(
                 torch.arange(self.num_catalogs),
                 "n -> numH numW n",
-                numH=self.num_tiles_per_side,
-                numW=self.num_tiles_per_side,
+                numH=self.num_tiles_h,
+                numW=self.num_tiles_w,
             )
-            rand = torch.rand([self.num_tiles_per_side, self.num_tiles_per_side])
+            rand = torch.rand([self.num_tiles_h, self.num_tiles_w])
             u = (seq + rand.unsqueeze(-1)) / self.num_catalogs
             bins = self.weights.cumsum(-1)
-            for h in range(self.num_tiles_per_side):
-                for w in range(self.num_tiles_per_side):
+            for h in range(self.num_tiles_h):
+                for w in range(self.num_tiles_w):
                     resampled_index[h, w] = torch.bucketize(u[h, w], bins[h, w])
 
         resampled_index = resampled_index.clamp(min=0, max=self.num_catalogs - 1)
@@ -187,8 +186,8 @@ class SMCsampler(object):
                 repeat(
                     resampled_index,
                     "numH numW n -> numH numW n d t",
-                    d=self.locs.shape[-2],
-                    t=self.locs.shape[-1],
+                    d=self.locs_cond.shape[-2],
+                    t=self.locs_cond.shape[-1],
                 ),
             )
         self.fluxes = torch.gather(
@@ -238,11 +237,16 @@ class SMCsampler(object):
         )
 
     def prune(self, locs, fluxes):
+        lower = torch.stack([self.prune_h_lower, self.prune_w_lower], dim=-1)
+        upper = torch.stack([self.prune_h_upper, self.prune_w_upper], dim=-1)
+        # Expand bounds to broadcast against locs [numH, numW, n, d, 2]
+        # [numH, numW, 2] -> [numH, numW, 1, 1, 2]; [2] -> [1, 1, 1, 1, 2]
+        while lower.dim() < locs.dim():
+            lower = lower.unsqueeze(-2)
+        while upper.dim() < locs.dim():
+            upper = upper.unsqueeze(-2)
         mask = torch.all(
-            torch.logical_and(
-                locs > torch.tensor((self.prune_h_lower, self.prune_w_lower)),
-                locs < torch.tensor((self.prune_h_upper, self.prune_w_upper)),
-            ),
+            torch.logical_and(locs > lower, locs < upper),
             dim=-1,
         )
         mask *= fluxes > self.pruned_flux_lower
@@ -401,13 +405,13 @@ class MHsampler(object):
             Prior.max_objects,
         )
 
-        _, l, f = self.Prior.sample(
+        _, locs_new, fluxes_new = self.Prior.sample(
             num_tiles_per_side=self.num_tiles_per_side,
             stratify_by_count=True,
             num_catalogs_per_count=1,
         )
-        self.locs[..., 0, :, :] = l[..., 0, :, :]
-        self.fluxes[..., 0, :] = f[..., 0, :]
+        self.locs[..., 0, :, :] = locs_new[..., 0, :, :]
+        self.fluxes[..., 0, :] = fluxes_new[..., 0, :]
 
         self.component_multinom = Multinomial(
             total_count=1,

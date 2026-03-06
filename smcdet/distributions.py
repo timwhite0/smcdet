@@ -27,6 +27,13 @@ class TruncatedDiagonalMVN(Distribution):
 
         self.dim = mu.size()
 
+        # Auto-expand lb/ub to broadcast against mu.
+        # e.g. [numH, numW, 2] -> [numH, numW, 1, 1, 2] for mu [numH, numW, n, d, 2]
+        while lb.dim() < mu.dim():
+            lb = lb.unsqueeze(-2)
+        while ub.dim() < mu.dim():
+            ub = ub.unsqueeze(-2)
+
         self.lb = lb
         self.ub = ub
 
