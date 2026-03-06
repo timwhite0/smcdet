@@ -117,6 +117,10 @@ class ImageModel(object):
 
         return psf_flat.view(numH, numW, self.image_height, self.image_width, n, d)
 
+    @property
+    def flux_scale(self):
+        return 1.0
+
     def sample(self, locs, fluxes):
         psf = self.psf(locs)
         rate = (psf * rearrange(fluxes, "numH numW n d -> numH numW 1 1 n d")).sum(
@@ -135,6 +139,9 @@ class ImageModel(object):
             -1
         ) + self.background
 
+        return self.loglikelihood_from_rate(image, rate)
+
+    def loglikelihood_from_rate(self, image, rate):
         mask = rate > 50000
 
         loglik_poisson = Poisson(rate).log_prob(image.unsqueeze(-1))
@@ -189,6 +196,10 @@ class M71ImageModel(ImageModel):
     def _compute_normalized_psf(self, r):
         return self._compute_unnormalized_psf(r) / self.psf_normalizing_constant
 
+    @property
+    def flux_scale(self):
+        return self.adu_per_nmgy
+
     def sample(self, locs, fluxes):
         psf = self.psf(locs)
         rate = (
@@ -223,6 +234,9 @@ class M71ImageModel(ImageModel):
             )
         ).sum(-1) + self.background
 
+        return self.loglikelihood_from_rate(image, rate)
+
+    def loglikelihood_from_rate(self, image, rate):
         return (
             Normal(
                 rate, (self.noise_additive + self.noise_multiplicative * rate).sqrt()

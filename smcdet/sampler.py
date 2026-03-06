@@ -1,6 +1,5 @@
 import torch
 from einops import rearrange, repeat
-from scipy.optimize import brentq
 from torch.distributions import Multinomial, Uniform
 
 from smcdet.distributions import TruncatedDiagonalMVN
@@ -112,6 +111,48 @@ class SMCsampler(object):
 
         return (log_numerator - log_denominator).exp() - self.ess_threshold
 
+    def _batched_tempering_objective(self, loglik, delta):
+        """Evaluate ESS objective for all tiles at once.
+
+        Args:
+            loglik: [H, W, N] log-likelihood values
+            delta: [H, W] temperature increments
+
+        Returns:
+            [H, W] objective values
+        """
+        delta_expanded = delta.unsqueeze(-1)
+        log_numerator = 2 * (delta_expanded * loglik).logsumexp(-1)
+        log_denominator = (2 * delta_expanded * loglik).logsumexp(-1)
+        return (log_numerator - log_denominator).exp() - self.ess_threshold
+
+    def _vectorized_bisect(self, loglik, upper, mask, num_iters=50, tol=1e-6):
+        """Batched bisection over all tiles that need search.
+
+        Args:
+            loglik: [H, W, N] log-likelihood values
+            upper: [H, W] upper bounds for bisection
+            mask: [H, W] bool, which tiles need bisection
+            num_iters: maximum bisection iterations
+            tol: convergence tolerance
+
+        Returns:
+            [H, W] found delta values (only meaningful where mask is True)
+        """
+        lo = torch.zeros_like(upper)
+        hi = upper.clone()
+
+        for _ in range(num_iters):
+            mid = (lo + hi) / 2
+            obj = self._batched_tempering_objective(loglik, mid)
+            # Where objective < 0, root is in [lo, mid]; else in [mid, hi]
+            hi = torch.where(mask & (obj < 0), mid, hi)
+            lo = torch.where(mask & (obj >= 0), mid, lo)
+            if (hi - lo)[mask].max() < tol:
+                break
+
+        return (lo + hi) / 2
+
     def temper(self):
         self.loglik = self.ImageModel.loglikelihood(
             self.image,
@@ -120,26 +161,16 @@ class SMCsampler(object):
             self.locs_cond,
             self.fluxes_cond,
         )
-        loglik = self.loglik.cpu()
+        loglik = self.loglik
 
-        delta = torch.zeros(self.num_tiles_h, self.num_tiles_w)
+        upper = 1 - self.temperature
+        obj_at_upper = self._batched_tempering_objective(loglik, upper)
+        needs_search = obj_at_upper < 0
 
-        for h in range(self.num_tiles_h):
-            for w in range(self.num_tiles_w):
-
-                def func(delta):
-                    return self.tempering_objective(loglik[h, w], delta)
-
-                if func(1 - self.temperature[h, w].item()) < 0:
-                    delta[h, w] = brentq(
-                        func,
-                        0.0,
-                        1 - self.temperature[h, w].item(),
-                        xtol=1e-6,
-                        rtol=1e-6,
-                    )
-                else:
-                    delta[h, w] = 1 - self.temperature[h, w].item()
+        delta = upper.clone()
+        if needs_search.any():
+            searched = self._vectorized_bisect(loglik, upper, needs_search)
+            delta = torch.where(needs_search, searched, delta)
 
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + delta
@@ -153,7 +184,6 @@ class SMCsampler(object):
                 0, (self.num_tiles_h, self.num_tiles_w)
             )
         elif self.resample_method == "systematic":
-            resampled_index = torch.zeros_like(self.weights, dtype=torch.int64)
             seq = repeat(
                 torch.arange(self.num_catalogs),
                 "n -> numH numW n",
@@ -163,9 +193,7 @@ class SMCsampler(object):
             rand = torch.rand([self.num_tiles_h, self.num_tiles_w])
             u = (seq + rand.unsqueeze(-1)) / self.num_catalogs
             bins = self.weights.cumsum(-1)
-            for h in range(self.num_tiles_h):
-                for w in range(self.num_tiles_w):
-                    resampled_index[h, w] = torch.bucketize(u[h, w], bins[h, w])
+            resampled_index = torch.searchsorted(bins, u)
 
         resampled_index = resampled_index.clamp(min=0, max=self.num_catalogs - 1)
         self.counts = torch.gather(self.counts, -1, resampled_index)
@@ -210,14 +238,29 @@ class SMCsampler(object):
         self.weights = (1 / self.num_catalogs) * torch.ones_like(self.weights)
 
     def mutate(self):
-        self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
-            self.image,
-            self.counts,
-            self.locs,
-            self.fluxes,
-            self.temperature,
-            self.log_target,
-        )
+        if hasattr(self.MutationKernel, "run_incremental"):
+            self.locs, self.fluxes, self.mutation_acc_rates = (
+                self.MutationKernel.run_incremental(
+                    self.image,
+                    self.counts,
+                    self.locs,
+                    self.fluxes,
+                    self.temperature,
+                    self.ImageModel,
+                    self.Prior,
+                    self.locs_cond,
+                    self.fluxes_cond,
+                )
+            )
+        else:
+            self.locs, self.fluxes, self.mutation_acc_rates = self.MutationKernel.run(
+                self.image,
+                self.counts,
+                self.locs,
+                self.fluxes,
+                self.temperature,
+                self.log_target,
+            )
 
     def update_weights(self):
         self.weights_log_unnorm = torch.nan_to_num(
