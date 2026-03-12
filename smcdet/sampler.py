@@ -69,8 +69,7 @@ class SMCsampler(object):
         cats = self.Prior.sample(
             num_tiles_h=self.num_tiles_h,
             num_tiles_w=self.num_tiles_w,
-            stratify_by_count=True,
-            num_catalogs_per_count=self.num_catalogs,
+            num_catalogs=self.num_catalogs,
         )
         self.counts, self.locs, self.fluxes = cats
 
@@ -449,9 +448,9 @@ class MHsampler(object):
         )
 
         _, locs_new, fluxes_new = self.Prior.sample(
-            num_tiles_per_side=self.num_tiles_per_side,
-            stratify_by_count=True,
-            num_catalogs_per_count=1,
+            num_tiles_h=self.num_tiles_per_side,
+            num_tiles_w=self.num_tiles_per_side,
+            num_catalogs=1,
         )
         self.locs[..., 0, :, :] = locs_new[..., 0, :, :]
         self.fluxes[..., 0, :] = fluxes_new[..., 0, :]

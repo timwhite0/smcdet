@@ -72,7 +72,6 @@ class BatchPrior:
 
         # Forward attributes from the reference prior
         self.max_objects = self._ref.max_objects
-        self.num_counts = self._ref.num_counts
 
     @property
     def loc_prior(self):
