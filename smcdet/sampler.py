@@ -1,8 +1,5 @@
 import torch
-from einops import rearrange, repeat
-from torch.distributions import Multinomial, Uniform
-
-from smcdet.distributions import TruncatedDiagonalMVN
+from einops import repeat
 
 
 class SMCsampler(object):
@@ -391,21 +388,23 @@ class MHsampler(object):
     def __init__(
         self,
         image,
-        tile_dim,
         Prior,
         ImageModel,
-        locs_stdev,
-        fluxes_stdev,
-        flux_detection_threshold,
+        MutationKernel,
         num_samples_total,
         num_samples_burnin,
+        prune_flux_lower,
+        prune_h_lower=-torch.inf,
+        prune_h_upper=torch.inf,
+        prune_w_lower=-torch.inf,
+        prune_w_upper=torch.inf,
         keep_every_k: int = 1,
         print_every: int = 1000,
     ):
         self.image = image
         self.image_dim = image.shape[0]
 
-        self.tile_dim = tile_dim
+        self.tile_dim = int(ImageModel.h_upper - ImageModel.h_lower)
         self.num_tiles_per_side = self.image_dim // self.tile_dim
         self.tiled_image = image.unfold(0, self.tile_dim, self.tile_dim).unfold(
             1, self.tile_dim, self.tile_dim
@@ -413,14 +412,15 @@ class MHsampler(object):
 
         self.Prior = Prior
         self.ImageModel = ImageModel
+        self.MutationKernel = MutationKernel
+        self.MutationKernel.locs_min = Prior.loc_prior.low
+        self.MutationKernel.locs_max = Prior.loc_prior.high
 
-        self.locs_stdev = torch.tensor(locs_stdev)
-        self.locs_min = Prior.loc_prior.low
-        self.locs_max = Prior.loc_prior.high
-        self.fluxes_stdev = torch.tensor(fluxes_stdev)
-        self.fluxes_min = torch.tensor(Prior.flux_lower)
-        self.fluxes_max = torch.tensor(Prior.flux_upper)
-        self.flux_detection_threshold = flux_detection_threshold
+        self.pruned_flux_lower = prune_flux_lower
+        self.prune_h_lower = torch.as_tensor(prune_h_lower).float()
+        self.prune_h_upper = torch.as_tensor(prune_h_upper).float()
+        self.prune_w_lower = torch.as_tensor(prune_w_lower).float()
+        self.prune_w_upper = torch.as_tensor(prune_w_upper).float()
 
         self.num_samples_total = num_samples_total
         self.burn_thin_idx = torch.arange(
@@ -455,17 +455,6 @@ class MHsampler(object):
         self.locs[..., 0, :, :] = locs_new[..., 0, :, :]
         self.fluxes[..., 0, :] = fluxes_new[..., 0, :]
 
-        self.component_multinom = Multinomial(
-            total_count=1,
-            probs=1
-            / self.fluxes.shape[-1]
-            * torch.ones_like(self.fluxes[..., 0, :].unsqueeze(2)),
-        )
-        self.AcceptRejectDist = Uniform(
-            torch.zeros(self.num_tiles_per_side, self.num_tiles_per_side),
-            torch.ones(self.num_tiles_per_side, self.num_tiles_per_side),
-        )
-
         self.accept = torch.zeros(
             self.num_tiles_per_side,
             self.num_tiles_per_side,
@@ -477,20 +466,24 @@ class MHsampler(object):
 
         self.has_run = False
 
-    def log_target(self, data, counts, locs, fluxes):
+    def log_target(self, data, counts, locs, fluxes, temperature=1.0):
         logprior = self.Prior.log_prob(counts, locs, fluxes)
         loglik = self.ImageModel.loglikelihood(data, locs, fluxes)
 
         return logprior + loglik
 
     def prune(self, locs, fluxes):
+        lower = torch.stack([self.prune_h_lower, self.prune_w_lower], dim=-1)
+        upper = torch.stack([self.prune_h_upper, self.prune_w_upper], dim=-1)
+        while lower.dim() < locs.dim():
+            lower = lower.unsqueeze(-2)
+        while upper.dim() < locs.dim():
+            upper = upper.unsqueeze(-2)
         mask = torch.all(
-            torch.logical_and(
-                locs > 0, locs < torch.tensor((self.tile_dim, self.tile_dim))
-            ),
+            torch.logical_and(locs > lower, locs < upper),
             dim=-1,
         )
-        mask *= fluxes > self.flux_detection_threshold
+        mask *= fluxes > self.pruned_flux_lower
 
         counts = mask.sum(-1)
 
@@ -520,99 +513,20 @@ class MHsampler(object):
                     )
                 )
 
-            component_mask = self.component_multinom.sample()
-
-            # propose locs and fluxes
-            locs_proposed = locs_prev * (1 - component_mask.unsqueeze(-1)) + (
-                TruncatedDiagonalMVN(
-                    locs_prev,
-                    self.locs_stdev,
-                    self.locs_min,
-                    self.locs_max,
-                ).sample()
-                * component_mask.unsqueeze(-1)
-            )
-            fluxes_proposed = fluxes_prev * (1 - component_mask) + (
-                TruncatedDiagonalMVN(
-                    fluxes_prev,
-                    self.fluxes_stdev,
-                    self.fluxes_min,
-                    self.fluxes_max,
-                ).sample()
-                * component_mask
-            )
-
-            # compute log numerator
-            log_num_target = self.log_target(
+            locs_new, fluxes_new, acc = self.MutationKernel.run(
                 self.tiled_image,
                 self.counts[..., n + 1].unsqueeze(2),
-                locs_proposed,
-                fluxes_proposed,
+                locs_prev,
+                fluxes_prev,
+                temperature=1.0,
+                log_target=self.log_target,
             )
-            log_num_qlocs = (
-                TruncatedDiagonalMVN(
-                    locs_proposed, self.locs_stdev, self.locs_min, self.locs_max
-                ).log_prob(locs_prev)
-                * component_mask.unsqueeze(-1)
-            ).sum([-2, -1])
-            log_num_qfluxes = (
-                TruncatedDiagonalMVN(
-                    fluxes_proposed,
-                    self.fluxes_stdev,
-                    self.fluxes_min,
-                    self.fluxes_max,
-                ).log_prob(fluxes_prev)
-                * component_mask
-            ).sum(-1)
-            log_numerator = log_num_target + log_num_qlocs + log_num_qfluxes
 
-            # compute log denominator
-            if n == 0:
-                log_denom_target = self.log_target(
-                    self.tiled_image,
-                    self.counts[..., n].unsqueeze(2),
-                    locs_prev,
-                    fluxes_prev,
-                )
-            log_denom_qlocs = (
-                TruncatedDiagonalMVN(
-                    locs_prev,
-                    self.locs_stdev,
-                    self.locs_min,
-                    self.locs_max,
-                ).log_prob(locs_proposed)
-                * component_mask.unsqueeze(-1)
-            ).sum([-2, -1])
-            log_denom_qfluxes = (
-                TruncatedDiagonalMVN(
-                    fluxes_prev,
-                    self.fluxes_stdev,
-                    self.fluxes_min,
-                    self.fluxes_max,
-                ).log_prob(fluxes_proposed)
-                * component_mask
-            ).sum(-1)
-            log_denominator = log_denom_target + log_denom_qlocs + log_denom_qfluxes
-
-            alpha = (log_numerator - log_denominator).exp().clamp(max=1).squeeze(-1)
-            prob = self.AcceptRejectDist.sample()
-            self.accept[..., n] = prob <= alpha
-
-            accept_l = rearrange(self.accept[..., n], "numH numW -> numH numW 1 1 1")
-            locs_new = locs_proposed * (accept_l) + locs_prev * (1 - accept_l)
+            self.accept[..., n] = acc.squeeze() > 0.5
             self.locs[..., n + 1, :, :] = locs_new.squeeze(2)
-            locs_prev = locs_new
-
-            accept_f = rearrange(self.accept[..., n], "numH numW -> numH numW 1 1")
-            fluxes_new = fluxes_proposed * (accept_f) + fluxes_prev * (1 - accept_f)
             self.fluxes[..., n + 1, :] = fluxes_new.squeeze(2)
+            locs_prev = locs_new
             fluxes_prev = fluxes_new
-
-            # cache denominator loglik for next iteration
-            accept_ldt = rearrange(self.accept[..., n], "numH numW -> numH numW 1")
-            log_denom_target = log_num_target * accept_ldt + log_denom_target * (
-                1 - accept_ldt
-            )
 
         # discard burn-in samples and thin the chain
         self.counts = self.counts[..., self.burn_thin_idx]
