@@ -171,7 +171,16 @@ class SMCsampler(object):
         self.temperature_prev = self.temperature
         self.temperature = self.temperature + delta
 
-    def resample(self):
+    def resample(self, mask=None):
+        """Resample particles. If mask is a [numH, numW] bool tensor, only
+        resample tiles where mask is True; others keep identity indices."""
+        identity = repeat(
+            torch.arange(self.num_catalogs),
+            "n -> numH numW n",
+            numH=self.num_tiles_h,
+            numW=self.num_tiles_w,
+        )
+
         if self.resample_method == "multinomial":
             resampled_index_flat = self.weights.flatten(0, 1).multinomial(
                 self.num_catalogs, replacement=True
@@ -180,18 +189,16 @@ class SMCsampler(object):
                 0, (self.num_tiles_h, self.num_tiles_w)
             )
         elif self.resample_method == "systematic":
-            seq = repeat(
-                torch.arange(self.num_catalogs),
-                "n -> numH numW n",
-                numH=self.num_tiles_h,
-                numW=self.num_tiles_w,
-            )
             rand = torch.rand([self.num_tiles_h, self.num_tiles_w])
-            u = (seq + rand.unsqueeze(-1)) / self.num_catalogs
+            u = (identity + rand.unsqueeze(-1)) / self.num_catalogs
             bins = self.weights.cumsum(-1)
             resampled_index = torch.searchsorted(bins, u)
 
         resampled_index = resampled_index.clamp(min=0, max=self.num_catalogs - 1)
+
+        if mask is not None:
+            mask = mask.unsqueeze(-1)
+            resampled_index = torch.where(mask, resampled_index, identity)
         self.counts = torch.gather(self.counts, -1, resampled_index)
         self.locs = torch.gather(
             self.locs,
@@ -327,7 +334,7 @@ class SMCsampler(object):
                     )
                 )
 
-            self.resample()
+            self.resample(self.ess < self.ess_threshold)
             self.mutate()
             self.temper()
             self.update_weights()
