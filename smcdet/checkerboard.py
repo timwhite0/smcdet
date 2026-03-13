@@ -206,6 +206,7 @@ class CheckerboardSMC:
         ] = image
 
         # Storage for pruned results per tile: (counts, locs, fluxes)
+        # Used during run() for conditioning between colors
         self.tile_results = {}
 
     def _get_tile_bounds(self, i, j):
@@ -246,31 +247,29 @@ class CheckerboardSMC:
         }
 
     def _gather_conditioning(self, i, j):
-        """Gather locs_cond/fluxes_cond from previously-sampled nearby tiles."""
-        all_locs = []
-        all_fluxes = []
+        """Gather locs_cond/fluxes_cond from previously-sampled nearby tiles.
+
+        Returns (locs_cond, fluxes_cond, provenance) where provenance is a list
+        of (ni, nj, num_sources) tuples tracking which global tiles contributed.
+        """
+        all_locs, all_fluxes, provenance = [], [], []
 
         nr = self.neighbor_radius
         for di in range(-nr, nr + 1):
             for dj in range(-nr, nr + 1):
                 ni, nj = i + di, j + dj
-                if (ni, nj) == (i, j):
-                    continue
-                if (ni, nj) not in self.tile_results:
+                if (ni, nj) == (i, j) or (ni, nj) not in self.tile_results:
                     continue
 
                 _, locs, fluxes = self.tile_results[(ni, nj)]
+                provenance.append((ni, nj, locs.shape[-2]))
                 all_locs.append(locs)
                 all_fluxes.append(fluxes)
 
         if not all_locs:
-            return None, None
+            return None, None, []
 
-        # Concatenate along source dimension
-        locs_cond = torch.cat(all_locs, dim=-2)
-        fluxes_cond = torch.cat(all_fluxes, dim=-1)
-
-        return locs_cond, fluxes_cond
+        return torch.cat(all_locs, dim=-2), torch.cat(all_fluxes, dim=-1), provenance
 
     def _extract_tile_image(self, i, j):
         """Extract tile image from padded image. Returns [tile_dim+2*image_pad, ...]."""
@@ -315,6 +314,7 @@ class CheckerboardSMC:
             # Gather per-tile conditioning
             per_tile_locs_cond = {}
             per_tile_fluxes_cond = {}
+            per_tile_provenance = {}
             max_cond = 0
 
             for si, sj, gi, gj in mapping:
@@ -344,9 +344,10 @@ class CheckerboardSMC:
                 img_w_upper[si, sj] = bounds["img_w_upper"]
 
                 # Conditioning
-                locs_c, fluxes_c = self._gather_conditioning(gi, gj)
+                locs_c, fluxes_c, prov = self._gather_conditioning(gi, gj)
                 per_tile_locs_cond[(si, sj)] = locs_c
                 per_tile_fluxes_cond[(si, sj)] = fluxes_c
+                per_tile_provenance[(si, sj)] = prov
                 if locs_c is not None:
                     max_cond = max(max_cond, locs_c.shape[-2])
 
@@ -415,7 +416,7 @@ class CheckerboardSMC:
             )
             sampler.run()
 
-            # Store pruned results per tile, mapped back to global coordinates
+            # Store pruned results per tile for conditioning by subsequent colors
             for si, sj, gi, gj in mapping:
                 self.tile_results[(gi, gj)] = (
                     sampler.pruned_counts[si : si + 1, sj : sj + 1].clone(),
@@ -423,24 +424,106 @@ class CheckerboardSMC:
                     sampler.pruned_fluxes[si : si + 1, sj : sj + 1].clone(),
                 )
 
-        # Combine all tiles' pruned results
+            # Track the final color's state for catalog assembly
+            self._final_sampler = sampler
+            self._final_mapping = mapping
+            self._final_cond_provenance = per_tile_provenance
+            self._final_prune_bounds = (
+                prune_h_lower,
+                prune_h_upper,
+                prune_w_lower,
+                prune_w_upper,
+            )
+
+        # Combine all tiles' pruned and raw results
         self._combine_results()
+        self._combine_raw_results()
 
         print("All tiles complete!")
 
+    def _prune_tile(self, locs, fluxes, h_lo, h_hi, w_lo, w_hi):
+        """Apply spatial bounds and flux pruning to a single tile's sources."""
+        lower = torch.tensor([h_lo, w_lo])
+        upper = torch.tensor([h_hi, w_hi])
+        while lower.dim() < locs.dim():
+            lower = lower.unsqueeze(0)
+        while upper.dim() < locs.dim():
+            upper = upper.unsqueeze(0)
+        mask = torch.all(torch.logical_and(locs > lower, locs < upper), dim=-1)
+        mask = mask * (fluxes > self.prune_flux_lower)
+        counts = mask.sum(-1)
+
+        locs = mask.unsqueeze(-1) * locs
+        locs_mask = (locs != 0).int()
+        locs_index = torch.sort(locs_mask, dim=3, descending=True)[1]
+        locs = torch.gather(locs, dim=3, index=locs_index)
+
+        fluxes = mask * fluxes
+        fluxes_mask = (fluxes != 0).int()
+        fluxes_index = torch.sort(fluxes_mask, dim=3, descending=True)[1]
+        fluxes = torch.gather(fluxes, dim=3, index=fluxes_index)
+
+        return counts, locs, fluxes
+
+    def _append_conditioning(self, si, sj, all_locs, all_fluxes, claimed):
+        """Append resampled conditioning sources from the final sampler,
+        skipping already-claimed global tiles."""
+        provenance = self._final_cond_provenance.get((si, sj), [])
+        if not provenance or self._final_sampler.locs_cond is None:
+            return
+        offset = 0
+        for ni, nj, nsrc in provenance:
+            if (ni, nj) not in claimed:
+                lc = self._final_sampler.locs_cond[si, sj, :, offset : offset + nsrc, :]
+                fc = self._final_sampler.fluxes_cond[si, sj, :, offset : offset + nsrc]
+                all_locs.append(lc.unsqueeze(0).unsqueeze(0))
+                all_fluxes.append(fc.unsqueeze(0).unsqueeze(0))
+                claimed.add((ni, nj))
+            offset += nsrc
+
     def _combine_results(self):
-        """Combine pruned results from all tiles into a single catalog."""
+        """Combine pruned catalogs from the final color's joint state."""
         all_locs = []
         all_fluxes = []
+        claimed = set()
+        ph_lo, ph_hi, pw_lo, pw_hi = self._final_prune_bounds
 
-        for i in range(self.num_rows):
-            for j in range(self.num_cols):
-                _, locs, fluxes = self.tile_results[(i, j)]
-                all_locs.append(locs)
-                all_fluxes.append(fluxes)
+        for si, sj, gi, gj in self._final_mapping:
+            # Prune the final-color tile's own sources to strict tile bounds
+            tile_locs = self._final_sampler.locs[si : si + 1, sj : sj + 1]
+            tile_fluxes = self._final_sampler.fluxes[si : si + 1, sj : sj + 1]
+            _, pruned_locs, pruned_fluxes = self._prune_tile(
+                tile_locs,
+                tile_fluxes,
+                ph_lo[si, sj],
+                ph_hi[si, sj],
+                pw_lo[si, sj],
+                pw_hi[si, sj],
+            )
+            all_locs.append(pruned_locs)
+            all_fluxes.append(pruned_fluxes)
+            claimed.add((gi, gj))
+            # Conditioning sources are already pruned — pass through
+            self._append_conditioning(si, sj, all_locs, all_fluxes, claimed)
 
-        # Concatenate along source dimension
-        # Each is [1, 1, num_catalogs, max_objects_tile, 2] / [..., max_objects_tile]
         self.combined_locs = torch.cat(all_locs, dim=-2)
         self.combined_fluxes = torch.cat(all_fluxes, dim=-1)
         self.combined_counts = (self.combined_fluxes > 0).sum(-1)
+
+    def _combine_raw_results(self):
+        """Combine raw (unpruned) catalogs from the final color's joint state."""
+        all_locs = []
+        all_fluxes = []
+        claimed = set()
+
+        for si, sj, gi, gj in self._final_mapping:
+            # Final-color tile's own unpruned sources
+            all_locs.append(self._final_sampler.locs[si : si + 1, sj : sj + 1])
+            all_fluxes.append(self._final_sampler.fluxes[si : si + 1, sj : sj + 1])
+            claimed.add((gi, gj))
+            # Resampled conditioning from earlier tiles
+            self._append_conditioning(si, sj, all_locs, all_fluxes, claimed)
+
+        self.combined_raw_locs = torch.cat(all_locs, dim=-2)
+        self.combined_raw_fluxes = torch.cat(all_fluxes, dim=-1)
+        self.combined_raw_counts = (self.combined_raw_fluxes > 0).sum(-1)
