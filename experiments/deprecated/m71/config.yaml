@@ -1,0 +1,19 @@
+defaults:
+    - _self_
+    - override hydra/job_logging: stdout
+
+paths:
+    sdss: /data/scratch/twhit/m71
+
+surveys:
+    sdss:
+      _target_: experiments.m71.survey_utils.sdss.SloanDigitalSkySurvey
+      dir_path: ${paths.sdss}
+      fields:
+          - run: 6895
+            camcol: 3
+            fields: [52]
+      psf_config:
+        pixel_scale: 0.396
+        psf_slen: 25
+      load_image_data: true

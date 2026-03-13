@@ -99,7 +99,7 @@ for t in range(thresh.shape[0]):
                 sep_mse[t, m, d, c] = (
                     (sep_estimated_count[t, m, d, c, :] - true_counts) ** 2
                 ).mean()
-                print(f"mse = {sep_mse[t,m,d,c]}\n\n")
+                print(f"mse = {sep_mse[t, m, d, c]}\n\n")
 
 for t in range(thresh.shape[0]):
     for m in range(minarea.shape[0]):
