@@ -22,7 +22,5 @@ manuscript/*.pdf
 manuscript/*.synctex.gz
 manuscript/*.brf
 manuscript/*.toc
-
-# Springer Nature template files
-manuscript/*.bst
-manuscript/*.cls
+manuscript/*.fdb_latexmk
+manuscript/*.fls

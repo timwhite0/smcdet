@@ -1,73 +1,195 @@
-%Version 3.1 December 2024
-% See section 11 of the User Manual for version history
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\PassOptionsToPackage{dvipsnames,svgnames,x11names}{xcolor}
 %
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%                                                                 %%
-%% Please do not use \input{...} to include other tex files.       %%
-%% Submit your LaTeX manuscript as one .tex document.              %%
-%%                                                                 %%
-%% All additional figures and files should be attached             %%
-%% separately and not embedded in the \TeX\ document itself.       %%
-%%                                                                 %%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[
+  12pt]{article}
 
-%%\documentclass[referee,sn-basic]{sn-jnl}% referee option is meant for double line spacing
+\usepackage{amsmath,amssymb}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math}
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+    % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{xcolor}
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\setcounter{secnumdepth}{5}
+% Make \paragraph and \subparagraph free-standing
+\makeatletter
+\ifx\paragraph\undefined\else
+  \let\oldparagraph\paragraph
+  \renewcommand{\paragraph}{
+    \@ifstar
+      \xxxParagraphStar
+      \xxxParagraphNoStar
+  }
+  \newcommand{\xxxParagraphStar}[1]{\oldparagraph*{#1}\mbox{}}
+  \newcommand{\xxxParagraphNoStar}[1]{\oldparagraph{#1}\mbox{}}
+\fi
+\ifx\subparagraph\undefined\else
+  \let\oldsubparagraph\subparagraph
+  \renewcommand{\subparagraph}{
+    \@ifstar
+      \xxxSubParagraphStar
+      \xxxSubParagraphNoStar
+  }
+  \newcommand{\xxxSubParagraphStar}[1]{\oldsubparagraph*{#1}\mbox{}}
+  \newcommand{\xxxSubParagraphNoStar}[1]{\oldsubparagraph{#1}\mbox{}}
+\fi
+\makeatother
 
-%%=======================================================%%
-%% to print line numbers in the margin use lineno option %%
-%%=======================================================%%
 
-%%\documentclass[lineno,pdflatex,sn-basic]{sn-jnl}% Basic Springer Nature Reference Style/Chemistry Reference Style
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}\usepackage{longtable,booktabs,array}
+\usepackage{calc} % for calculating minipage widths
+% Correct order of tables after \paragraph or \subparagraph
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd\longtable{\par}{\if@noskipsec\mbox{}\fi\par}{}{}
+\makeatother
+% Allow footnotes in longtable head/foot
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\makesavenoteenv{longtable}
+\usepackage{graphicx}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+% Set default figure placement to htbp
+\makeatletter
+\def\fps@figure{htbp}
+\makeatother
 
-%%=========================================================================================%%
-%% the documentclass is set to pdflatex as default. You can delete it if not appropriate.  %%
-%%=========================================================================================%%
+\addtolength{\oddsidemargin}{-.5in}%
+\addtolength{\evensidemargin}{-.1in}%
+\addtolength{\textwidth}{1in}%
+\addtolength{\textheight}{1.7in}%
+\addtolength{\topmargin}{-1in}
+\makeatletter
+\@ifpackageloaded{caption}{}{\usepackage{caption}}
+\AtBeginDocument{%
+\ifdefined\contentsname
+  \renewcommand*\contentsname{Table of contents}
+\else
+  \newcommand\contentsname{Table of contents}
+\fi
+\ifdefined\listfigurename
+  \renewcommand*\listfigurename{List of Figures}
+\else
+  \newcommand\listfigurename{List of Figures}
+\fi
+\ifdefined\listtablename
+  \renewcommand*\listtablename{List of Tables}
+\else
+  \newcommand\listtablename{List of Tables}
+\fi
+\ifdefined\figurename
+  \renewcommand*\figurename{Figure}
+\else
+  \newcommand\figurename{Figure}
+\fi
+\ifdefined\tablename
+  \renewcommand*\tablename{Table}
+\else
+  \newcommand\tablename{Table}
+\fi
+}
+\@ifpackageloaded{float}{}{\usepackage{float}}
+\floatstyle{ruled}
+\@ifundefined{c@chapter}{\newfloat{codelisting}{h}{lop}}{\newfloat{codelisting}{h}{lop}[chapter]}
+\floatname{codelisting}{Listing}
+\newcommand*\listoflistings{\listof{codelisting}{List of Listings}}
+\makeatother
+\makeatletter
+\makeatother
+\makeatletter
+\@ifpackageloaded{caption}{}{\usepackage{caption}}
+\@ifpackageloaded{subcaption}{}{\usepackage{subcaption}}
+\makeatother
 
-%%\documentclass[sn-basic]{sn-jnl}% Basic Springer Nature Reference Style/Chemistry Reference Style
 
-%%Note: the following reference styles support Namedate and Numbered referencing. By default the style follows the most common style. To switch between the options you can add or remove Numbered in the optional parenthesis.
-%%The option is available for: sn-basic.bst, sn-chicago.bst%
+\ifLuaTeX
+  \usepackage{selnolig}  % disable illegal ligatures
+\fi
+\usepackage[]{natbib}
+\bibliographystyle{agsm}
+\usepackage{bookmark}
 
-%%\documentclass[pdflatex,sn-nature]{sn-jnl}% Style for submissions to Nature Portfolio journals
-%%\documentclass[pdflatex,sn-basic]{sn-jnl}% Basic Springer Nature Reference Style/Chemistry Reference Style
-\documentclass[pdflatex,sn-mathphys-num]{sn-jnl}% Math and Physical Sciences Numbered Reference Style
-%%\documentclass[pdflatex,sn-mathphys-ay]{sn-jnl}% Math and Physical Sciences Author Year Reference Style
-%%\documentclass[pdflatex,sn-aps]{sn-jnl}% American Physical Society (APS) Reference Style
-%%\documentclass[pdflatex,sn-vancouver-num]{sn-jnl}% Vancouver Numbered Reference Style
-%%\documentclass[pdflatex,sn-vancouver-ay]{sn-jnl}% Vancouver Author Year Reference Style
-%%\documentclass[pdflatex,sn-apa]{sn-jnl}% APA Reference Style
-%%\documentclass[pdflatex,sn-chicago]{sn-jnl}% Chicago-based Humanities Reference Style
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same} % disable monospaced font for URLs
+\hypersetup{
+  pdftitle={Sequential Monte Carlo Samplers for Probabilistic Object Detection in Images},
+  pdfauthor={},
+  pdfkeywords={interacting particle systems, marked point processes, posterior sampling, likelihood tempering, transdimensional inference, Bayesian model choice},
+  colorlinks=true,
+  linkcolor={blue},
+  filecolor={Maroon},
+  citecolor={Blue},
+  urlcolor={Blue},
+  pdfcreator={LaTeX}}
 
-%%%% Standard Packages
+
+
+
+\newcommand{\anon}{1}
+
+%set the key \texttt{anon} to ``0'' to hide the authors and acknowledgements,
+%  producing the required anonymized version.
+%Set the key \texttt{anon} to ``1'' to produce the manuscript with author details and
+% acknowledgments.
+
+
+% Packages and commands used by the manuscript.
 %%<additional latex packages if required can be included here>
-
-\usepackage{graphicx}%
 \usepackage{multirow}%
-\usepackage{amsmath,amssymb,amsfonts}%
-\usepackage{amsthm}%
+\usepackage{amsfonts}%
 \usepackage{mathrsfs}%
 \usepackage[title]{appendix}%
-\usepackage{xcolor}%
-\usepackage{textcomp}%
 \usepackage{manyfoot}%
-\usepackage{booktabs}%
 \usepackage{algorithm}%
 \usepackage{algorithmicx}%
 \usepackage[noend]{algpseudocode}%
 \usepackage{listings}%
 %%%%
-
 %%%% Additional packages and commands
 \usepackage{xfrac}
 \usepackage{mathtools}
 \usepackage{anyfontsize}
-\usepackage{bookmark}
 \newcommand{\mathds}[1]{\mathbb{#1}}
 \usepackage{cleveref}
 \crefname{figure}{Figure}{Figures}
 \Crefname{figure}{Figure}{Figures}
 \usepackage[colorinlistoftodos]{todonotes}
-\usepackage{subcaption}
 \renewcommand{\sectionautorefname}{Section}
 \newcommand{\algorithmautorefname}{Algorithm}
 \renewcommand{\figurename}{Figure}
@@ -75,85 +197,64 @@
 \renewcommand{\algorithmicensure}{\textbf{Return:}}
 \newcommand{\algorithmspace}{\vspace{3pt}}
 \newcommand{\padvert}{\thinspace \vert \thinspace}
-
-\usepackage{tikz, pgfplots}
+\usepackage{tikz,pgfplots}
 \usetikzlibrary{calc,positioning,external,shapes.geometric,bending,fit}
 % \tikzexternalize
 % \pgfplotsset{compat=1.18}
-
 \definecolor{steelblue}{HTML}{4682B4}
 \definecolor{burlywood}{HTML}{DEB887}
 \definecolor{indianred}{HTML}{CD5C5C}
 \definecolor{mediumseagreen}{HTML}{3CB371}
 \definecolor{sienna}{HTML}{A9561E}
 \definecolor{grassgreen}{HTML}{3F9B0B}
-
 \newcommand{\jeff}[1]{\todo[inline, color=blue!30]{#1 \mbox{--Jeff}}}
 \newcommand{\tim}[1]{\todo[inline, color=red!30]{#1 \mbox{--Tim}}}
 %%%%
 
-%%%%%=============================================================================%%%%
-%%%%  Remarks: This template is provided to aid authors with the preparation
-%%%%  of original research articles intended for submission to journals published
-%%%%  by Springer Nature. The guidance has been prepared in partnership with
-%%%%  production teams to conform to Springer Nature technical requirements.
-%%%%  Editorial and presentation requirements differ among journal portfolios and
-%%%%  research disciplines. You may find sections in this template are irrelevant
-%%%%  to your work and are empowered to omit any such section if allowed by the
-%%%%  journal you intend to submit to. The submission guidelines and policies
-%%%%  of the journal take precedence. A detailed User Manual is available in the
-%%%%  template package for technical guidance.
-%%%%%=============================================================================%%%%
-
-%% as per the requirement new theorem styles can be included as shown below
-\theoremstyle{thmstyleone}%
-\newtheorem{theorem}{Theorem}%  meant for continuous numbers
-%%\newtheorem{theorem}{Theorem}[section]% meant for sectionwise numbers
-%% optional argument [theorem] produces theorem numbering sequence instead of independent numbers for Proposition
-\newtheorem{proposition}[theorem]{Proposition}%
-%%\newtheorem{proposition}{Proposition}% to get separate numbers for theorem and proposition etc.
-
-\theoremstyle{thmstyletwo}%
-\newtheorem{example}{Example}%
-\newtheorem{remark}{Remark}%
-
-\theoremstyle{thmstylethree}%
-\newtheorem{definition}{Definition}%
-
 \raggedbottom
-%%\unnumbered% uncomment this for unnumbered level heads
+\if1\anon
+  \hypersetup{pdfauthor={Tim White; Jeffrey Regier}}
+\fi
 
 \begin{document}
 
-\title[SMC for object detection]{Sequential Monte Carlo Samplers for Probabilistic Object Detection in Images}
-%%=============================================================%%
-%% GivenName	-> \fnm{Joergen W.}
-%% Particle	-> \spfx{van der} -> surname prefix
-%% FamilyName	-> \sur{Ploeg}
-%% Suffix	-> \sfx{IV}
-%% \author*[1,2]{\fnm{Joergen W.} \spfx{van der} \sur{Ploeg}
-%%  \sfx{IV}}\email{iauthor@gmail.com}
-%%=============================================================%%
+\def\spacingset#1{\renewcommand{\baselinestretch}{#1}\small\normalsize}
+\spacingset{1}
 
-% \author*[1]{\fnm{Tim} \sur{White}}\email{twhit@umich.edu}
+\if1\anon
+{
+  \title{\bf Sequential Monte Carlo Samplers for Probabilistic Object Detection in Images}
+  \author{Tim White\thanks{
+    This manuscript is based upon work supported by the National Science Foundation (\texttt{<grant identification number omitted>}).}\hspace{.2cm}\\
+    Department of Statistics, University of Michigan\\
+    and\\
+    Jeffrey Regier\\
+    Department of Statistics, University of Michigan}
+  \date{\today}
+  \maketitle
+} \fi
 
-% \author[1]{\fnm{Jeffrey} \sur{Regier}}\email{regier@umich.edu}
+\if0\anon
+{
+  \bigskip
+  \bigskip
+  \bigskip
+  \begin{center}
+    {\LARGE\bf Sequential Monte Carlo Samplers for Probabilistic Object Detection in Images}
+  \end{center}
+  \medskip
+} \fi
 
-% \affil[1]{\orgdiv{Department of Statistics}, \orgname{University of Michigan}, \orgaddress{\city{Ann Arbor}, \postcode{48109}, \state{Michigan}, \country{United States}}}
+\bigskip
+\begin{abstract}
+Object detection is a fundamental image analysis task that is relevant to many scientific disciplines. Although scientists typically possess some knowledge of the shapes, sizes, and features of the objects in an image, inferring these properties from pixels is challenging when the objects overlap or exhibit low contrast with the background. The Bayesian paradigm is well suited to this task because it enables probabilistic inference of the number of imaged objects and allows practitioners to incorporate prior knowledge about their properties. However, most existing Bayesian object detection methods rely on transdimensional sampling algorithms such as reversible jump Markov chain Monte Carlo, which are often challenging to design and incompatible with modern parallel computing capabilities. We propose count-stratified sequential Monte Carlo (CS-SMC), a parallelizable probabilistic approach to detecting objects in crowded scenes. Given an image, CS-SMC generates posterior samples of object counts, positions, and properties by running several fixed-dimensional SMC samplers in parallel. The samples and marginal likelihood estimates produced by these SMC samplers can be combined with a prior distribution over object counts to perform posterior inference over sets of objects. In a case study involving astronomical images of crowded starfields, CS-SMC provides well-calibrated estimates of stellar counts, fluxes, and locations. These results suggest that our algorithm is a compelling alternative to existing object detection methods in settings where a well-specified parametric object model is available.
+\end{abstract}
 
-%%==================================%%
-%% Sample for unstructured abstract %%
-%%==================================%%
+\noindent{\it Keywords:} interacting particle systems, marked point processes, posterior sampling, likelihood tempering, transdimensional inference, Bayesian model choice
+\vfill
 
-\abstract{Object detection is a fundamental image analysis task that is relevant to many scientific disciplines. Although scientists typically possess some knowledge of the shapes, sizes, and features of the objects in an image, inferring these properties from pixels is challenging when the objects overlap or exhibit low contrast with the background. The Bayesian paradigm is well suited to this task because it enables probabilistic inference of the number of imaged objects and allows practitioners to incorporate prior knowledge about their properties. However, most existing Bayesian object detection methods rely on transdimensional sampling algorithms such as reversible jump Markov chain Monte Carlo, which are often challenging to design and incompatible with modern parallel computing capabilities. We propose count-stratified sequential Monte Carlo (CS-SMC), a parallelizable probabilistic approach to detecting objects in crowded scenes. Given an image, CS-SMC generates posterior samples of object counts, positions, and properties by running several fixed-dimensional SMC samplers in parallel. The samples and marginal likelihood estimates produced by these SMC samplers can be combined with a prior distribution over object counts to perform posterior inference over sets of objects. In a case study involving astronomical images of crowded starfields, CS-SMC provides well-calibrated estimates of stellar counts, fluxes, and locations. These results suggest that our algorithm is a compelling alternative to existing object detection methods in settings where a well-specified parametric object model is available.}
-
-\keywords{interacting particle systems, marked point processes, posterior sampling, likelihood tempering, transdimensional inference, Bayesian model choice}
-
-%%\pacs[JEL Classification]{D8, H51}
-
-%%\pacs[MSC Classification]{35A01, 65L10, 65L12, 65L20, 65L70}
-
-\maketitle
+\newpage
+\spacingset{1.8} % DON'T change the spacing!
 
 \section{Introduction} \label{smc:introduction}
 
@@ -294,7 +395,7 @@ that relates the catalogs $s \cup z_{(s)}$ to the image $x$ for each candidate o
 
 To account for the possibility that objects whose centers lie outside the boundary of the image $x$ contribute nontrivial intensity to the outermost image pixels, we allow the spatial subspace of each $\mathcal{Z}_{(s)}$ to extend beyond the boundary of $x$. Thus, we refer to each $\mathcal{Z}_{(s)}$ as a padded latent space, and we write it as a partition $\mathcal{Z}_{(s)} = \mathcal{Z}_{(s)}^- \cup \mathcal{Z}_{(s)}^+$ comprising an unpadded latent space $\mathcal{Z}_{(s)}^-$ and latent padding $\mathcal{Z}_{(s)}^+$. Defining a positive latent padding width is necessary when processing images in which some of the object centers fall outside the image boundary, as setting it to zero would likely result in incorrect duplicate detections just inside the boundary. In \autoref{fig:exampleimage}, we illustrate the distinction between these unpadded and padded latent spaces for a synthetic astronomical image and catalog.
 
-\begin{figure}[t]
+\begin{figure}[tp]
     \centering
     \begin{tikzpicture}
         \node (exampleimage) {\includegraphics[width=0.5\textwidth]{figures/m71synthetic_manyimages/m71synth_examplecatalog.png}};
@@ -573,7 +674,7 @@ In both sets of experiments, running CS-SMC on one $8{\times}8$-pixel image took
 
 \autoref{fig:m71synth_repeatedruns} demonstrates that, for a particular image with three stars, the estimated marginal log-likelihoods $\log \widehat{p}(x \padvert s)$ and corresponding posterior count probabilities $\widehat{p}(s \padvert x)$ vary less across independent runs of CS-SMC when each count-specific SMC sampler utilizes more catalogs per source count $N$ and more Metropolis-Hastings mutation steps. Accordingly, we set $N = 10,000$ and use 100 Metropolis-Hastings steps when applying CS-SMC to our dataset of 1,000 synthetic images. \autoref{fig:appdx:m71synth_repeatedruns} repeats this simulation study for an image with one star, and the results suggest that using fewer catalogs and Metropolis-Hastings steps may be sufficient in sparse images.
 
-\begin{figure}[t]
+\begin{figure}[tp]
 \centering
 \begin{minipage}[t]{\textwidth}
 \centering
@@ -593,7 +694,7 @@ CS-SMC produces well-calibrated estimates of stellar counts. In contrast, Source
 
 
 
-\begin{figure}[t!]
+\begin{figure}[!tp]
 \centering
 \begin{subfigure}[t]{0.48\textwidth}
     \includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_confmat_smc_samples.png}
@@ -622,7 +723,7 @@ CS-SMC produces well-calibrated estimates of stellar counts. In contrast, Source
 
 Our algorithm also produces well-calibrated estimates of total fluxes, obtained for each image by summing the fluxes of all stars located in the unpadded latent space for each true or inferred catalog. We analyze the total flux of each catalog instead of the individual stellar fluxes it comprises, since a star's index in a catalog inferred by CS-SMC or Source Extractor may differ from its index in the true catalog; this ``label switching'' issue is inherent to transdimensional inference \citep{jasra2005markov}. The left panel of \autoref{fig:m71synth_totalflux} displays 90\% credible intervals for total flux, constructed for each image using quantiles of 10,000 CS-SMC catalogs; approximately 90\% of these intervals contain the true total flux. The middle panel demonstrates that this approximate achievement of the nominal coverage probability holds for interval widths between 0.05 and 0.95. The right panel reveals that Source Extractor's point estimates systematically underestimate the true total flux.
 
-\begin{figure}[t!]
+\begin{figure}[!tp]
     \centering
     \includegraphics[width=\textwidth]{figures/m71synthetic_manyimages/m71synth_matching.png}
     \caption[Synthetic images: Precision, recall, and F1 score by binned magnitude]{Precision, recall, and F1 score by binned magnitude in 1,000 synthetic $8{\times}8$-pixel images. Stars inferred by count-stratified SMC and Source Extractor are matched to true stars using the procedure described in \autoref{smc:resultssynthetic}. For count-stratified SMC, we report the mean of each metric across 200 posterior catalogs in each bin, as well as simultaneous 90\% confidence intervals with a Bonferroni correction.}
@@ -631,7 +732,7 @@ Our algorithm also produces well-calibrated estimates of total fluxes, obtained 
 
 To assess the quality of individual detections made by each algorithm, we compute the precision (i.e., positive predictive value), recall (i.e, true positive rate), and F1 score (i.e., harmonic mean of precision and recall) of catalogs inferred by CS-SMC and Source Extractor by matching inferred stars to stars in the true catalog. Following \cite{feder2020multiband} and \cite{liu2023variational}, we match an inferred star with a true star if their locations differ by less than 0.5 pixels and their magnitudes differ by less than 0.5. \autoref{fig:m71synth_matching} reports the precision, recall, and F1 score of Source Extractor and CS-SMC detections across the 1,000 synthetic images for several magnitude bins. In each bin, the value reported for CS-SMC is the mean of each metric across 200 posterior catalogs. CS-SMC achieves a higher precision, recall, and F1 score than Source Extractor in all bins brighter than 22 magnitude. The two algorithms achieve similar metrics for stars fainter than this threshold, which is near the detection limit for SDSS images.
 
-\begin{figure}[t!]
+\begin{figure}[!tp]
     \includegraphics[width=0.9\textwidth]{figures/m71synthetic_manyimages/m71synth_clf.png}
     \caption[Synthetic images: Total and matched source counts by binned magnitude]{Total (left) and matched (right) source counts by binned magnitude in 1,000 synthetic $8{\times}8$-pixel images. Stars inferred by count-stratified SMC and Source Extractor are matched to true stars using the procedure described in \autoref{smc:resultssynthetic}. The median and 90\% credible interval are marked in each magnitude bin for count-stratified SMC.}
     \label{fig:m71synth_countsmagbin}
@@ -651,7 +752,7 @@ For three representative M71 cutouts, \autoref{fig:m71_detections} displays the 
 
 
 
-\begin{figure}[t]
+\begin{figure}[tp]
 \centering
 \begin{minipage}[t]{\textwidth}
 \centering
@@ -669,7 +770,7 @@ For three representative M71 cutouts, \autoref{fig:m71_detections} displays the 
 \label{fig:m71_detections}
 \end{figure}
 
-\begin{figure}[t!]
+\begin{figure}[!tp]
     \centering
     \includegraphics[width=\textwidth]{figures/m71_manyimages/m71_matching.png}
     \caption[M71 cutouts: Precision, recall, and F1 score by binned magnitude]{Precision, recall, and F1 score by binned magnitude in 332 $8{\times}8$-pixel M71 cutouts. Stars inferred by count-stratified SMC and Source Extractor are matched to true stars using the procedure described in \autoref{smc:resultssynthetic}. For count-stratified SMC, we report the mean of each metric across 200 posterior catalogs in each bin, as well as simultaneous 90\% confidence intervals with a Bonferroni correction.}
@@ -680,7 +781,7 @@ We match true and inferred stars using the procedure described in \autoref{smc:r
 
 \autoref{fig:m71_countsmagbin} offers insight into this relative underperformance, as both CS-SMC and Source Extractor detect more stars in the intermediate magnitude bins than are present in the Hubble catalog. \autoref{fig:appdx:m71_confmats} corroborates this finding, and \autoref{fig:appdx:m71_totalflux} demonstrates that the total fluxes inferred by CS-SMC are poorly calibrated. Considering that CS-SMC exhibited strong performance in \autoref{smc:resultssynthetic} and that we extensively tuned the count-specific SMC samplers, the detection of spurious stars in the M71 cutouts suggests that the model proposed and fitted in \autoref{smc:m71model} is somehow misspecified. The most likely culprit is the point spread function — we theorize that the six-parameter SDSS PSF is not flexible enough. Alternatively, perhaps the PSF parameters vary across M71, and thus the maximum likelihood estimates from \autoref{smc:m71model} are inaccurate for some cutouts.
 
-\begin{figure}[t!]
+\begin{figure}[!tp]
     \centering
     \includegraphics[width=0.9\textwidth]{figures/m71_manyimages/m71_clf.png}
     \caption[M71 cutouts: Total and matched source counts by binned magnitude]{Total (left) and matched (right) source counts by binned magnitude in 332 $8{\times}8$-pixel M71 cutouts. Stars inferred by count-stratified SMC and Source Extractor are matched to true stars using the procedure described in \autoref{smc:resultssynthetic}. The median and 90\% credible interval are marked in each magnitude bin for count-stratified SMC.}
@@ -700,9 +801,22 @@ We expect that CS-SMC would be computationally inefficient if applied to large i
 We intend to scale CS-SMC to larger, more crowded images by embedding it in a divide-and-conquer sequential Monte Carlo algorithm \citep{lindsten2017divide,kuntz2024divide}. We will infer the posterior distribution $p(s^{(u)}, z_{(s)}^{(u)} \padvert x^{(u)})$ for each subregion $u$ of a partitioned image, and then merge, mutate, and reweight posterior catalogs from progressively larger adjacent subregions. Preliminary results suggest that this procedure is computationally feasible.
 
 
-\backmatter
 
-\bmhead{Supplementary information}
+\section{Disclosure statement}\label{disclosure-statement}
+
+The authors have the following conflicts of interest to declare.
+
+
+
+\section{Data Availability Statement}\label{data-availability-statement}
+
+...
+
+\phantomsection\label{supplementary-material}
+\bigskip
+\begin{center}
+{\large\bf SUPPLEMENTARY MATERIAL}
+\end{center}
 
 \begin{itemize}
     \item Appendix A: Additional Results for Synthetic Images
@@ -711,13 +825,10 @@ We intend to scale CS-SMC to larger, more crowded images by embedding it in a di
 
 
 
-\bmhead{Acknowledgements}
-
-This manuscript is based upon work supported by the National Science Foundation (\texttt{<grant identification number omitted>}).
 
 
 
-\newpage
+\clearpage
 
 \begin{appendices}
 
@@ -847,32 +958,7 @@ This manuscript is based upon work supported by the National Science Foundation 
 
 \end{appendices}
 
-
-%%=============================================%%
-%% For submissions to Nature Portfolio Journals %%
-%% please use the heading ``Extended Data''.   %%
-%%=============================================%%
-
-%%=============================================================%%
-%% Sample for another appendix section			       %%
-%%=============================================================%%
-
-%% \section{Example of another appendix section}\label{secA2}%
-%% Appendices may be used for helpful, supporting or essential material that would otherwise
-%% clutter, break up or be distracting to the text. Appendices can consist of sections, figures,
-%% tables and equations etc.
-
-%%===========================================================================================%%
-%% If you are submitting to one of the Nature Portfolio journals, using the eJP submission   %%
-%% system, please include the references within the manuscript file itself. You may do this  %%
-%% by copying the reference list from your .bbl file, paste it into the main manuscript .tex %%
-%% file, and delete the associated \verb+\bibliography+ commands.                            %%
-%%===========================================================================================%%
-
-\newpage
-
-\bibliography{references}% common bib file
-%% if required, the content of .bbl file can be included here once bbl is generated
-%%\input sn-article.bbl
+\clearpage
+\bibliography{references}
 
 \end{document}
